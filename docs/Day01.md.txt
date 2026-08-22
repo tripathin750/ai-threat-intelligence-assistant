@@ -1,0 +1,190 @@
+# AI-Based Threat Intelligence Assistant
+
+# Day 01 – Introduction to Cyber Threat Intelligence (CTI)
+
+**Date:** 16 July 2026
+
+---
+
+# Objective
+
+The objective of today's session was to understand the fundamental concepts of **Cyber Threat Intelligence (CTI)** and define the overall scope of the dissertation project. This included learning the different types of threat intelligence, the intelligence lifecycle, common cybersecurity terminologies, and understanding how these concepts will be integrated into the AI-Based Threat Intelligence Assistant.
+
+---
+
+# Topics Studied
+
+## 1. Cyber Threat Intelligence (CTI)
+
+**CTI** stands for **Cyber Threat Intelligence**.
+
+Cyber Threat Intelligence is the process of collecting, analysing, and sharing information about current and potential cyber threats. The primary purpose of CTI is to help organizations identify risks early and make informed security decisions before an attack occurs. Rather than reacting after a cyberattack, CTI enables organizations to adopt a proactive approach to cybersecurity.
+
+---
+
+## 2. Types of Threat Intelligence
+
+### Strategic Threat Intelligence
+
+Strategic Threat Intelligence is designed for senior management, executives, and business decision-makers. It focuses on high-level information such as industry trends, emerging cyber threats, business risks, and the financial impact of cyberattacks. This type of intelligence supports long-term planning and investment decisions.
+
+---
+
+### Tactical Threat Intelligence
+
+Tactical Threat Intelligence focuses on understanding attacker behaviour and attack techniques. It provides information about how cybercriminals conduct attacks, which tactics and techniques they commonly use, and how defenders can detect or prevent them. This intelligence is closely associated with the MITRE ATT&CK Framework.
+
+---
+
+### Operational Threat Intelligence
+
+Operational Threat Intelligence provides information about active cyberattack campaigns, threat actors, ransomware groups, and ongoing attacks. It helps security teams understand who is attacking, what their objectives are, and which organizations are being targeted.
+
+---
+
+### Technical Threat Intelligence
+
+Technical Threat Intelligence contains technical indicators such as CVEs, malicious IP addresses, domain names, malware hashes, URLs, and exploit information. This type of intelligence is highly useful for security analysts and automated detection systems. It will serve as the primary data source for the AI Threat Intelligence Assistant.
+
+---
+
+# 3. Threat Intelligence Lifecycle
+
+The Threat Intelligence Lifecycle describes the systematic process followed to transform raw security information into actionable intelligence.
+
+The lifecycle consists of six stages:
+
+1. **Planning** – Identify the intelligence requirements and determine what information needs to be collected.
+
+2. **Collection** – Gather data from multiple trusted sources such as vulnerability databases, vendor advisories, security blogs, and threat intelligence feeds.
+
+3. **Processing** – Clean, organize, and convert raw data into a structured format suitable for analysis.
+
+4. **Analysis** – Examine the processed information to identify patterns, assess risks, and generate meaningful insights.
+
+5. **Dissemination** – Share the intelligence with relevant stakeholders through reports, dashboards, alerts, or other communication methods.
+
+6. **Feedback** – Collect feedback from users to improve future intelligence collection and reporting.
+
+This lifecycle forms the foundation of the proposed AI-powered Threat Intelligence Assistant.
+
+---
+
+# 4. Common Cybersecurity Terminologies
+
+## CVE (Common Vulnerabilities and Exposures)
+
+A **CVE** is a globally recognized identifier assigned to a publicly disclosed cybersecurity vulnerability. Each CVE represents a unique security flaw that has been documented and published.
+
+Example:
+
+CVE-2026-12345
+
+The AI assistant will retrieve CVEs from public vulnerability databases and analyse their details.
+
+---
+
+## CVSS (Common Vulnerability Scoring System)
+
+**CVSS** is an industry-standard scoring system used to measure the severity of a vulnerability. The score ranges from **0 to 10**, where higher scores indicate greater security risk.
+
+Severity Levels:
+
+- 0.0 : None
+- 0.1 – 3.9 : Low
+- 4.0 – 6.9 : Medium
+- 7.0 – 8.9 : High
+- 9.0 – 10.0 : Critical
+
+The AI assistant will use CVSS scores to prioritize vulnerabilities based on their level of risk.
+
+---
+
+## CWE (Common Weakness Enumeration)
+
+A **CWE** identifies the underlying software weakness or programming mistake that causes vulnerabilities.
+
+Examples include:
+
+- SQL Injection
+- Cross-Site Scripting (XSS)
+- Buffer Overflow
+- Improper Input Validation
+
+Multiple CVEs may originate from the same CWE.
+
+---
+
+## CAPEC (Common Attack Pattern Enumeration and Classification)
+
+**CAPEC** is a knowledge base that describes common attack patterns used by attackers to exploit software weaknesses.
+
+Instead of describing vulnerabilities, CAPEC focuses on **how attackers perform attacks**.
+
+Examples include:
+
+- SQL Injection
+- Credential Stuffing
+- DLL Hijacking
+- Cross-Site Scripting
+
+---
+
+## KEV (Known Exploited Vulnerabilities)
+
+**KEV** stands for **Known Exploited Vulnerabilities**.
+
+Maintained by the Cybersecurity and Infrastructure Security Agency (CISA), the KEV catalog contains vulnerabilities that are actively exploited by attackers in real-world environments. Organizations should prioritize patching these vulnerabilities because they present immediate security risks.
+
+---
+
+## MITRE ATT&CK Framework
+
+The **MITRE ATT&CK (Adversarial Tactics, Techniques, and Common Knowledge) Framework** is a globally recognized cybersecurity knowledge base that documents the tactics and techniques used by attackers during cyber intrusions.
+
+Rather than focusing on vulnerabilities, MITRE ATT&CK explains **how attackers behave after gaining access to a system**.
+
+Examples of attacker activities include:
+
+- Initial Access
+- Execution
+- Persistence
+- Privilege Escalation
+- Credential Access
+- Discovery
+- Lateral Movement
+- Data Exfiltration
+- Impact
+
+The AI assistant will analyse vulnerabilities and map them to relevant MITRE ATT&CK techniques.
+
+---
+
+# Key Learnings
+
+- Cyber Threat Intelligence enables organizations to proactively defend against cyber threats by providing actionable security information.
+- Different types of threat intelligence serve different audiences, ranging from executive management to security analysts.
+- The Threat Intelligence Lifecycle provides a structured process for collecting, analysing, and distributing threat information.
+- CVEs uniquely identify vulnerabilities, while CVSS measures their severity.
+- CWEs describe the software weaknesses responsible for vulnerabilities.
+- CAPEC explains the attack methods used by cybercriminals.
+- The KEV catalog highlights vulnerabilities that are actively exploited in the real world.
+- The MITRE ATT&CK Framework helps security professionals understand attacker behaviour and map attacks to standardized techniques.
+
+---
+
+# Reflection
+
+Today's session provided the theoretical foundation required for the dissertation project. I developed an understanding of Cyber Threat Intelligence, vulnerability management, and the importance of structured threat analysis. I also learned how different cybersecurity frameworks and standards are interconnected.
+
+This knowledge will serve as the basis for designing an AI-powered Threat Intelligence Assistant capable of automatically retrieving vulnerability information, generating AI-based summaries, mapping vulnerabilities to MITRE ATT&CK techniques, and recommending security mitigations.
+
+---
+
+# Next Steps
+
+- Study the National Vulnerability Database (NVD) and understand its data structure.
+- Explore CVE JSON files and API responses.
+- Learn the architecture of the MITRE ATT&CK knowledge base.
+- Review existing Threat Intelligence Platforms (TIPs) such as MISP and OpenCTI.
+- Begin reading research papers related to AI-assisted Threat Intelligence systems.

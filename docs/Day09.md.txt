@@ -1,0 +1,112 @@
+# AI-Based Threat Intelligence Assistant
+
+# Day 09 – SQL, PostgreSQL and Database Integration
+
+**Date:** 24 July 2026
+
+---
+
+# Objective
+
+The objective of today's session was to learn how applications interact with relational databases using Structured Query Language (SQL). I also studied Object-Relational Mapping (ORM), SQLAlchemy, database connections, and the initial database implementation for the AI-Based Threat Intelligence Assistant.
+
+---
+
+# Topics Studied
+
+## SQL
+
+SQL stands for Structured Query Language. It is used to communicate with relational databases and perform operations such as creating, retrieving, updating, and deleting data.
+
+---
+
+## SQL CRUD Operations
+
+The main database operations studied were:
+
+- CREATE – Create database objects.
+- INSERT – Add records.
+- SELECT – Retrieve records.
+- UPDATE – Modify records.
+- DELETE – Remove records.
+
+---
+
+## Object-Relational Mapping (ORM)
+
+ORM stands for Object-Relational Mapping. It allows developers to interact with relational databases using programming-language objects rather than manually writing SQL queries for every operation.
+
+---
+
+## SQLAlchemy
+
+SQLAlchemy is a Python SQL toolkit and Object-Relational Mapping library. It will be used to connect the FastAPI backend with PostgreSQL and represent database tables as Python classes.
+
+---
+
+## PostgreSQL Database
+
+A PostgreSQL database named `threat_intelligence` was planned/created to store vulnerability intelligence collected from the NVD.
+
+---
+
+# Initial Database Schema
+
+The `vulnerabilities` table contains:
+
+- cve_id
+- description
+- cvss_score
+- severity
+- cwe_id
+- published_date
+- last_modified
+- source
+
+The CVE ID is used as the primary key because it uniquely identifies a vulnerability.
+
+---
+
+# Security Considerations
+
+Database credentials should not be hard-coded in source code. Environment variables and `.env` files should be used during development, and `.env` should be excluded from version control.
+
+---
+
+# Practical Activities
+
+- Learned basic SQL syntax.
+- Created the `threat_intelligence` database.
+- Created the `vulnerabilities` table.
+- Inserted a test vulnerability.
+- Retrieved the test record using SELECT.
+- Planned the SQLAlchemy integration.
+- Considered secure database credential management.
+
+---
+
+# Key Learnings
+
+- SQL allows applications to communicate with relational databases.
+- PostgreSQL stores structured vulnerability information efficiently.
+- SQLAlchemy provides an abstraction layer between Python and PostgreSQL.
+- A well-designed database schema is important for scalability.
+- Database credentials must be protected from source-code exposure.
+
+---
+
+# Reflection
+
+Today's session provided the foundation for persistent data storage within the project. Previously, vulnerability information was retrieved directly from the NVD API. Introducing PostgreSQL allows the application to maintain its own searchable and persistent vulnerability database.
+
+I also learned that database security must be considered during development rather than added later. Protecting credentials through environment variables is an important part of secure software engineering.
+
+---
+
+# Next Steps
+
+- Install SQLAlchemy and the PostgreSQL Python driver.
+- Create the database connection module.
+- Create the Vulnerability SQLAlchemy model.
+- Connect FastAPI to PostgreSQL.
+- Insert NVD vulnerability data programmatically.

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Evidence-grounded CVE threat intelligence dashboard" />
+    <title>AI Threat Intelligence Assistant</title>
+    <link rel="stylesheet" href="/dashboard/styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div>
+        <p class="eyebrow">CYBER THREAT INTELLIGENCE</p>
+        <h1>AI Threat Intelligence Assistant</h1>
+        <p class="subtitle">NVD-backed vulnerability intelligence with transparent ATT&amp;CK inference.</p>
+      </div>
+      <div class="header-actions">
+        <label class="api-key-field" title="Only needed if this deployment has API_KEY set in backend/.env. Kept in this browser tab only — cleared when the tab closes.">
+          API key (optional)
+          <input id="api-key-input" type="password" placeholder="X-API-Key" autocomplete="off" />
+        </label>
+        <button id="sync-button" class="button button-primary">Sync latest NVD CVEs</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="notice" aria-label="Analysis disclaimer">
+        <strong>Evidence first:</strong> NVD provides the vulnerability facts. The generated analysis, ATT&amp;CK mappings, and mitigations are advisory and must be reviewed against vendor guidance.
+      </section>
+
+      <section class="search-panel" aria-label="CVE search">
+        <label>
+          Search CVE ID or description
+          <input id="search-input" type="search" placeholder="e.g. CVE-2026 or web application" minlength="2" />
+        </label>
+        <label>
+          Severity
+          <select id="severity-select">
+            <option value="">All severities</option>
+            <option value="CRITICAL">Critical</option>
+            <option value="HIGH">High</option>
+            <option value="MEDIUM">Medium</option>
+            <option value="LOW">Low</option>
+            <option value="NONE">None</option>
+          </select>
+        </label>
+        <label>
+          Minimum CVSS
+          <input id="cvss-input" type="number" min="0" max="10" step="0.1" placeholder="0.0" />
+        </label>
+        <button id="search-button" class="button button-primary">Search</button>
+      </section>
+
+      <p id="status" class="status" role="status">Loading local CVEs…</p>
+      <section class="content-grid">
+        <section class="panel cve-panel" aria-label="CVE results">
+          <div class="panel-heading">
+            <h2>Vulnerabilities</h2>
+            <span id="result-count" class="muted"></span>
+          </div>
+          <div id="cve-list" class="cve-list"></div>
+          <div class="pagination">
+            <button id="previous-button" class="button button-secondary" disabled>Previous</button>
+            <button id="next-button" class="button button-secondary" disabled>Next</button>
+          </div>
+        </section>
+
+        <section class="panel intelligence-panel" aria-live="polite">
+          <div class="panel-heading">
+            <h2>Threat Intelligence</h2>
+            <span id="selected-cve" class="muted">Select a CVE</span>
+          </div>
+          <div id="intelligence-empty" class="empty-state">Choose a vulnerability to view or generate its intelligence record.</div>
+          <div id="intelligence-content" hidden>
+            <section>
+              <h3>AI-assisted summary</h3>
+              <p id="analysis-summary"></p>
+              <p id="analysis-impact" class="secondary-text"></p>
+              <div class="chips"><span id="analysis-risk" class="badge"></span><span id="analysis-confidence" class="badge badge-neutral"></span></div>
+            </section>
+            <section>
+              <h3>MITRE ATT&amp;CK candidates</h3>
+              <div id="attack-list" class="stack"></div>
+            </section>
+            <section>
+              <h3>Recommended mitigations</h3>
+              <p id="immediate-action"></p>
+              <ul id="mitigation-list"></ul>
+            </section>
+            <details>
+              <summary>Evidence used</summary>
+              <ul id="evidence-list"></ul>
+            </details>
+          </div>
+        </section>
+      </section>
+    </main>
+    <script src="/dashboard/app.js" defer></script>
+  </body>
+</html>

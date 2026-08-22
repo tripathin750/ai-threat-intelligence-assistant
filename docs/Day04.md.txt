@@ -1,0 +1,103 @@
+# AI-Based Threat Intelligence Assistant
+
+# Day 04 – REST APIs and the National Vulnerability Database (NVD) API
+
+**Date:** 19 July 2026
+
+---
+
+# Objective
+
+The objective of today's session was to understand how software applications communicate over the internet using REST APIs. I learned the concepts of APIs, HTTP, REST architecture, HTTP methods, requests, responses, JSON data, and how the National Vulnerability Database (NVD) API will provide vulnerability information for the AI-Based Threat Intelligence Assistant.
+
+---
+
+# Topics Studied
+
+## Application Programming Interface (API)
+
+An API (Application Programming Interface) is a communication bridge that allows two software applications to exchange information. Instead of directly accessing another system's database, applications send requests through APIs and receive structured responses.
+
+---
+
+## REST (Representational State Transfer)
+
+REST is a software architectural style that defines standard rules for communication between web applications. Most modern web services expose REST APIs because they are lightweight, scalable, and easy to integrate.
+
+---
+
+## HTTP (HyperText Transfer Protocol)
+
+HTTP is the protocol used for communication between clients and servers over the internet. Every interaction with a REST API is performed through HTTP requests and responses.
+
+---
+
+## HTTP Methods
+
+The primary HTTP methods include:
+
+- GET – Retrieve data
+- POST – Create new data
+- PUT – Update existing data
+- DELETE – Remove data
+
+The AI Threat Intelligence Assistant will primarily use GET requests to retrieve vulnerability information.
+
+---
+
+## Request and Response
+
+A request is sent by a client to ask for information.
+
+A response is returned by the server containing the requested data.
+
+---
+
+## JSON (JavaScript Object Notation)
+
+JSON is a lightweight format for storing and exchanging structured data.
+
+The National Vulnerability Database returns vulnerability information in JSON format.
+
+---
+
+## API Endpoint
+
+An endpoint is a specific URL that provides access to a particular resource within an API.
+
+Different endpoints return different types of information.
+
+---
+
+# How This Relates to the Project
+
+The FastAPI backend will send GET requests to the National Vulnerability Database API.
+
+The API will return vulnerability information in JSON format.
+
+The backend will process the JSON data, store it in PostgreSQL, and forward relevant information to an AI model for summarization, MITRE ATT&CK mapping, and mitigation generation.
+
+---
+
+# Key Learnings
+
+- APIs enable communication between software systems.
+- REST provides a standardized approach for web-based APIs.
+- HTTP is the communication protocol used by REST APIs.
+- JSON is the primary format used for exchanging structured data.
+- The project will rely on the NVD API as its primary vulnerability intelligence source.
+
+---
+
+# Reflection
+
+Today's session connected software engineering concepts with cybersecurity. I learned that APIs form the foundation of modern applications and will be essential for automatically collecting vulnerability information. Understanding REST APIs and JSON has provided the knowledge required to begin implementing the project's data ingestion pipeline.
+
+---
+
+# Next Steps
+
+- Learn Python's `requests` library.
+- Make the first API call to the NVD.
+- Parse JSON responses.
+- Store vulnerability data in a local database.

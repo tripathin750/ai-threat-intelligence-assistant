@@ -1,0 +1,32 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+#
+# Deploy: on render.com, "New +" -> "Blueprint" -> connect this GitHub repo.
+# Render reads this file automatically and provisions the service below.
+# You still set the secret values (DATABASE_URL, etc.) yourself in the
+# Render dashboard after the first deploy — see README.md's Deployment section.
+
+services:
+  - type: web
+    name: ai-threat-intelligence-assistant
+    runtime: python
+    plan: free
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: DATABASE_URL
+        sync: false   # set manually in the Render dashboard — a Neon (or other) Postgres URL; never commit this
+      - key: ALLOWED_ORIGINS
+        value: https://ai-threat-intelligence-assistant.onrender.com
+      - key: ALLOWED_HOSTS
+        value: ai-threat-intelligence-assistant.onrender.com
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "120"
+      - key: ENABLE_SCHEDULER
+        value: "false"
+      - key: API_KEY
+        sync: false   # optional — leave unset for an open demo, or set one and use the dashboard's API key field
+      - key: NVD_API_KEY
+        sync: false   # optional — raises the NVD request-rate quota

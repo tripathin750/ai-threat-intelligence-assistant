@@ -1,0 +1,88 @@
+# AI-Based Threat Intelligence Assistant
+
+# Day 06 – Building the Backend with FastAPI
+
+**Date:** 21 July 2026
+
+---
+
+# Objective
+
+The objective of today's session was to understand the role of a backend in a web application and learn how to build a REST API using FastAPI. I also learned how to run a FastAPI application using Uvicorn and expose API endpoints that return JSON responses.
+
+---
+
+# Topics Studied
+
+## Backend
+
+The backend is the server-side component of an application. It processes client requests, communicates with databases and external APIs, performs business logic, and returns responses to the frontend.
+
+---
+
+## FastAPI
+
+FastAPI is a modern Python web framework used to build high-performance REST APIs. It provides automatic data validation, interactive API documentation, and seamless integration with modern Python tools.
+
+---
+
+## Uvicorn
+
+Uvicorn is an ASGI server used to run FastAPI applications. It listens for incoming HTTP requests and forwards them to the FastAPI application for processing.
+
+---
+
+## API Endpoints
+
+An endpoint is a specific URL that performs a particular operation.
+
+Examples:
+
+- `/`
+- `/about`
+- `/cves`
+
+Each endpoint handles specific HTTP requests.
+
+---
+
+## JSON Responses
+
+FastAPI automatically converts Python dictionaries into JSON before sending them to clients.
+
+---
+
+# Practical Activities
+
+- Installed FastAPI and Uvicorn.
+- Created the first FastAPI application.
+- Implemented the root endpoint (`/`).
+- Created an additional endpoint (`/about`).
+- Started the backend server using Uvicorn.
+- Accessed the API through a web browser.
+- Explored the automatically generated Swagger UI documentation.
+
+---
+
+# Key Learnings
+
+- A backend handles communication between users, databases, AI models, and external services.
+- FastAPI simplifies the development of REST APIs.
+- Uvicorn runs FastAPI applications as a web server.
+- API endpoints expose application functionality over HTTP.
+- FastAPI automatically generates interactive API documentation.
+
+---
+
+# Reflection
+
+Today's session transformed the project from a collection of standalone Python scripts into the foundation of a web application. Understanding FastAPI and backend architecture has prepared me to integrate vulnerability retrieval, database storage, and AI processing into a single unified system.
+
+---
+
+# Next Steps
+
+- Connect the existing `fetch_cves.py` logic to FastAPI.
+- Create a `/cves` endpoint.
+- Return live vulnerability data through the backend.
+- Prepare for PostgreSQL database integration.

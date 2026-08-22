@@ -1,0 +1,10 @@
+fastapi
+pydantic
+psycopg[binary]
+python-dotenv
+requests
+SQLAlchemy
+uvicorn[standard]
+
+# Test-only dependency: required by fastapi.testclient.TestClient (backend/tests/test_api.py).
+httpx

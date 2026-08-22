@@ -1,0 +1,100 @@
+# AI-Based Threat Intelligence Assistant
+
+# Day 05 – Retrieving Vulnerability Data Using Python
+
+**Date:** 20 July 2026
+
+---
+
+# Objective
+
+The objective of today's session was to learn how Python applications communicate with REST APIs and retrieve vulnerability data from the National Vulnerability Database (NVD). I also learned how to parse JSON responses and extract relevant information required for the AI-Based Threat Intelligence Assistant.
+
+---
+
+# Topics Studied
+
+## Data Ingestion
+
+Data ingestion is the process of collecting data from external sources and importing it into an application for processing. In this project, the National Vulnerability Database (NVD) serves as the primary external data source.
+
+---
+
+## Python Requests Library
+
+The Requests library enables Python programs to send HTTP requests to web APIs. It simplifies communication with REST APIs by providing methods such as GET, POST, PUT, and DELETE.
+
+---
+
+## HTTP GET Request
+
+A GET request retrieves information from a server without modifying any data. The AI Threat Intelligence Assistant will use GET requests to fetch vulnerability information from the NVD API.
+
+---
+
+## HTTP Status Codes
+
+HTTP status codes indicate whether an API request was successful.
+
+Common status codes include:
+
+- 200 – Request Successful
+- 400 – Bad Request
+- 401 – Unauthorized
+- 404 – Resource Not Found
+- 500 – Internal Server Error
+
+---
+
+## JSON Parsing
+
+The NVD API returns vulnerability information in JSON format.
+
+Python converts JSON responses into dictionaries using the `.json()` method, making it possible to access individual fields such as the CVE identifier, description, severity, and affected products.
+
+---
+
+## Extracting Vulnerability Information
+
+The application extracted key information from each vulnerability, including:
+
+- CVE Identifier
+- Vulnerability Description
+
+These fields will later be stored in a database and processed by the AI model.
+
+---
+
+# Practical Activities
+
+- Installed the Requests library.
+- Connected to the NVD API.
+- Sent the first GET request.
+- Received a successful response.
+- Parsed the JSON response.
+- Extracted CVE IDs and vulnerability descriptions.
+- Printed the first five vulnerabilities.
+
+---
+
+# Key Learnings
+
+- Python applications communicate with APIs using the Requests library.
+- API responses are returned in JSON format.
+- JSON data can be converted into Python dictionaries.
+- The NVD API is the primary source of vulnerability information for this project.
+
+---
+
+# Reflection
+
+Today's session marked the transition from theoretical learning to practical implementation. Successfully retrieving real vulnerability information demonstrated how external threat intelligence feeds can be integrated into software applications. This component forms the foundation of the AI Threat Intelligence Assistant, as all subsequent analysis depends on the accurate collection of vulnerability data.
+
+---
+
+# Next Steps
+
+- Learn FastAPI.
+- Create the first backend API endpoint.
+- Return vulnerability data through our own REST API.
+- Prepare for database integration.

@@ -1,0 +1,25 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# SQLite dev databases — never commit real or test data
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Test/coverage artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Editor/OS noise
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# Word lock files (e.g. research/Notes/~$Notes.docx)
+~$*

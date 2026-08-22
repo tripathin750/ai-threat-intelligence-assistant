@@ -1,0 +1,81 @@
+# AI-Based Threat Intelligence Assistant
+
+# Day 02 – Understanding the MITRE ATT&CK Framework
+
+**Date:** 17 July 2026
+
+---
+
+# Objective
+
+The objective of today's session was to understand the MITRE ATT&CK Framework, its purpose, structure, and importance in modern cybersecurity. This knowledge will enable the AI Threat Intelligence Assistant to map vulnerabilities to attacker techniques and provide contextual threat intelligence.
+
+---
+
+# Topics Studied
+
+## MITRE
+
+MITRE is a non-profit organization that develops research-based cybersecurity frameworks and knowledge bases. The MITRE ATT&CK Framework documents real-world attacker behaviour.
+
+## ATT&CK
+
+Adversarial Tactics, Techniques, and Common Knowledge.
+
+It provides a standardized method of describing attacker behaviour.
+
+## Tactics
+
+High-level attacker objectives.
+
+Examples include:
+
+- Initial Access
+- Execution
+- Persistence
+- Credential Access
+- Exfiltration
+- Impact
+
+## Techniques
+
+Methods attackers use to achieve their objectives.
+
+Each technique has a unique identifier (e.g., T1190).
+
+## Sub-Techniques
+
+More specific implementations of a technique.
+
+Example:
+
+T1003.001 – LSASS Memory
+
+## Procedures
+
+Real-world implementations used by threat actors.
+
+---
+
+# Key Learnings
+
+- Vulnerabilities describe weaknesses in systems, while ATT&CK describes attacker behaviour.
+- ATT&CK provides a common language for defenders worldwide.
+- Every attack follows a sequence of tactics and techniques.
+- Mapping CVEs to ATT&CK techniques provides valuable context for analysts.
+- The AI assistant will automatically identify likely ATT&CK techniques from vulnerability descriptions.
+
+---
+
+# Reflection
+
+Today's session shifted the focus from understanding vulnerabilities to understanding attacker behaviour. I learned that MITRE ATT&CK complements vulnerability intelligence by explaining how attackers exploit weaknesses. This capability will be central to the intelligence enrichment process implemented in the project.
+
+---
+
+# Next Steps
+
+- Study the National Vulnerability Database (NVD)
+- Explore CVE JSON data
+- Understand the NVD API
+- Design the data ingestion pipeline

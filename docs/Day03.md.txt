@@ -1,0 +1,92 @@
+# AI-Based Threat Intelligence Assistant
+
+# Day 03 – National Vulnerability Database (NVD) & CVE Data
+
+**Date:** 18 July 2026
+
+---
+
+# Objective
+
+The objective of today's session was to understand how vulnerability information is published, stored, and accessed. I explored the relationship between the Common Vulnerabilities and Exposures (CVE) system and the National Vulnerability Database (NVD), and learned how this data will serve as the primary input for the AI-Based Threat Intelligence Assistant.
+
+---
+
+# Topics Studied
+
+## Vulnerability Disclosure Process
+
+A software vulnerability typically follows these stages:
+
+1. Vulnerability Discovery
+2. Responsible Disclosure
+3. CVE Assignment
+4. Publication in the National Vulnerability Database (NVD)
+
+This process ensures vulnerabilities are documented consistently and can be referenced by the global cybersecurity community.
+
+---
+
+## National Vulnerability Database (NVD)
+
+The National Vulnerability Database is a publicly accessible repository maintained by the National Institute of Standards and Technology (NIST). It stores enriched information about publicly disclosed vulnerabilities, including severity scores, software weaknesses, affected products, and references.
+
+---
+
+## Difference Between CVE and NVD
+
+A CVE (Common Vulnerabilities and Exposures) is a unique identifier assigned to a vulnerability.
+
+The NVD is the database that stores detailed information about each CVE.
+
+---
+
+## Information Stored in an NVD Record
+
+Each vulnerability record may include:
+
+- CVE Identifier
+- Description
+- CVSS Score
+- CWE
+- Affected Products
+- References
+- Vendor Information
+
+---
+
+## JSON (JavaScript Object Notation)
+
+The NVD publishes vulnerability information in JSON format.
+
+JSON is a lightweight data-interchange format that stores information using key-value pairs. It allows applications to exchange structured data efficiently.
+
+---
+
+# How This Relates to the Project
+
+The AI Threat Intelligence Assistant will retrieve vulnerability information from the National Vulnerability Database, process the JSON data, store it in a database, and send the relevant information to an AI model for summarization, MITRE ATT&CK mapping, and mitigation recommendation generation.
+
+---
+
+# Key Learnings
+
+- The NVD is the primary public source of vulnerability information.
+- A CVE identifies a vulnerability, while the NVD provides detailed information about it.
+- Vulnerability information is exchanged in JSON format.
+- The AI assistant will use NVD data as its primary intelligence source.
+
+---
+
+# Reflection
+
+Today's session helped me understand where vulnerability intelligence originates and how standardized vulnerability information is shared across the cybersecurity community. I also learned how structured JSON data can be consumed by software applications, making it possible to automate vulnerability analysis using artificial intelligence.
+
+---
+
+# Next Steps
+
+- Learn how REST APIs work.
+- Understand API requests and responses.
+- Explore the NVD API.
+- Begin building the data ingestion pipeline.

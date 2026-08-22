@@ -1,0 +1,121 @@
+# AI-Based Threat Intelligence Assistant
+
+# Day 12 – Pydantic Validation and Layered Backend Architecture
+
+**Date:** 27 July 2026
+
+---
+
+# Objective
+
+The objective of today's session was to learn how Pydantic can be used to validate and structure application data within a FastAPI backend. I also studied the difference between Pydantic schemas and SQLAlchemy models and introduced a layered architecture separating API, service, and data responsibilities.
+
+---
+
+# Topics Studied
+
+## Pydantic
+
+Pydantic is a Python library used for data validation and parsing based on Python type annotations.
+
+It allows the application to define expected data types and identify invalid input before it is processed.
+
+---
+
+## Pydantic Schema
+
+A Pydantic schema defines the expected structure of data entering or leaving the application.
+
+For example, a vulnerability schema can define:
+
+- CVE ID as a string.
+- Description as a string.
+- CVSS score as an optional floating-point value.
+- Severity as an optional string.
+- CWE ID as an optional string.
+
+---
+
+## Required and Optional Fields
+
+Required fields must be supplied when creating a schema.
+
+Optional fields can contain a value or `None`.
+
+This is important because not every vulnerability record contains all possible enrichment information.
+
+---
+
+## Pydantic vs SQLAlchemy
+
+Pydantic is primarily used for data validation and data transfer.
+
+SQLAlchemy is used for database interaction and persistence.
+
+The two technologies therefore have different responsibilities.
+
+---
+
+## Layered Architecture
+
+The backend is being organized into separate layers:
+
+### API Layer
+Handles HTTP requests, responses, and routing.
+
+### Service Layer
+Contains application and business logic such as NVD communication and future AI processing.
+
+### Data Layer
+Handles PostgreSQL, SQLAlchemy models, and database operations.
+
+---
+
+# Practical Activities
+
+- Reviewed Python type hints.
+- Installed/confirmed Pydantic.
+- Created a vulnerability Pydantic schema.
+- Tested valid vulnerability data.
+- Tested invalid data.
+- Studied FastAPI request and response validation.
+- Planned separation between API, service, and database layers.
+
+---
+
+# Key Learnings
+
+- Pydantic provides structured data validation.
+- FastAPI integrates closely with Pydantic.
+- Pydantic schemas and SQLAlchemy models serve different purposes.
+- Validation should occur before data reaches the database or AI system.
+- Layered architecture improves maintainability and reduces coupling.
+- API, service, and data responsibilities should be separated.
+
+---
+
+# Security Considerations
+
+Input validation is an important secure software development practice.
+
+External API responses and user-provided data should not be blindly trusted. Validating data before processing reduces the risk of malformed or unexpected input affecting the application.
+
+Response schemas can also help prevent accidental exposure of internal database fields.
+
+---
+
+# Reflection
+
+Today's session improved the reliability and architecture of the backend. Previously, the application could retrieve and store data, but the structure and validation responsibilities were less clearly separated.
+
+Introducing Pydantic provides a formal definition of the data expected by the application. Separating API, service, and database responsibilities also creates a foundation that will make future AI, MITRE ATT&CK, and mitigation components easier to integrate.
+
+---
+
+# Next Steps
+
+- Integrate Pydantic validation with the NVD normalization process.
+- Improve error handling.
+- Implement database duplicate handling.
+- Add NVD pagination.
+- Begin building a reliable ingestion service.

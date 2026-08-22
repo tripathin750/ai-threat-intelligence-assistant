@@ -1,0 +1,99 @@
+# AI-Based Threat Intelligence Assistant
+
+# Day 08 – Database Fundamentals and PostgreSQL Design
+
+**Date:** 23 July 2026
+
+---
+
+# Objective
+
+The objective of today's session was to understand why databases are required in modern software systems and design the initial database schema for the AI-Based Threat Intelligence Assistant. I learned the fundamentals of relational databases, PostgreSQL, database tables, and CRUD operations.
+
+---
+
+# Topics Studied
+
+## Database
+
+A database is an organized collection of information that allows data to be stored, retrieved, updated, and deleted efficiently.
+
+---
+
+## PostgreSQL
+
+PostgreSQL is an open-source relational database management system used to store structured application data securely and efficiently.
+
+---
+
+## Relational Database
+
+A relational database organizes data into tables that can be linked using relationships and keys.
+
+---
+
+## Database Components
+
+- Table
+- Row
+- Column
+- Primary Key
+
+---
+
+## CRUD Operations
+
+The four basic database operations include:
+
+- Create
+- Read
+- Update
+- Delete
+
+---
+
+## Database Schema
+
+The project database will initially contain a Vulnerabilities table with fields including:
+
+- CVE ID
+- Description
+- CVSS Score
+- Severity
+- CWE
+- Published Date
+- Last Modified
+- Source
+
+---
+
+# Practical Activities
+
+- Installed PostgreSQL.
+- Created a new database.
+- Designed the initial Vulnerabilities table.
+- Planned future tables for MITRE mappings and AI summaries.
+
+---
+
+# Key Learnings
+
+- Databases improve performance by avoiding repeated API requests.
+- PostgreSQL is suitable for scalable cybersecurity applications.
+- A well-designed schema improves maintainability and performance.
+- CRUD operations form the basis of database interaction.
+
+---
+
+# Reflection
+
+Today's session introduced one of the most important architectural components of the project. I learned that databases are not only used to store information but also to improve application performance, enable analytics, and support scalable software design.
+
+---
+
+# Next Steps
+
+- Learn SQL fundamentals.
+- Connect PostgreSQL to FastAPI.
+- Create the Vulnerabilities table.
+- Insert real CVE data into the database.

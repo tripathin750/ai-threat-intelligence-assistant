@@ -1,0 +1,24 @@
+AI-Threat-Intelligence-Assistant/
+
+│
+├── docs/
+│      Day01.md
+│      Day02.md
+│      Day03.md
+│      ...
+│
+├── research/
+│      Papers/
+│      Notes/
+│
+├── backend/
+│
+├── frontend/
+│
+├── database/
+│
+├── diagrams/
+│
+├── dissertation/
+│
+└── README.md

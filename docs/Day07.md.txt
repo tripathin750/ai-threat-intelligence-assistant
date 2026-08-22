@@ -1,0 +1,77 @@
+# AI-Based Threat Intelligence Assistant
+
+# Day 07 – Integrating FastAPI with the NVD Data Collection Module
+
+**Date:** 22 July 2026
+
+---
+
+# Objective
+
+The objective of today's session was to integrate the NVD data retrieval module with the FastAPI backend. I learned how to separate application logic into reusable modules, create a new API endpoint, and expose live vulnerability data through a REST API.
+
+---
+
+# Topics Studied
+
+## Modular Programming
+
+Modular programming divides an application into smaller, reusable Python modules. Each module has a single responsibility, improving maintainability and code reuse.
+
+---
+
+## Separation of Concerns (SoC)
+
+Separation of Concerns is a software engineering principle where each component of the application performs one well-defined task. In this project, FastAPI handles HTTP requests while the data retrieval module communicates with the NVD API.
+
+---
+
+## API Integration
+
+The FastAPI backend imported the data retrieval function and exposed it through a new `/cves` endpoint. This endpoint returns vulnerability information retrieved from the National Vulnerability Database.
+
+---
+
+## Request Lifecycle
+
+A client sends an HTTP request to the backend. The backend invokes the business logic, retrieves data from the NVD API, processes the response, and returns structured JSON to the client.
+
+---
+
+## Data Transformation
+
+Instead of returning the complete NVD response, the backend extracts only the fields required by the application, such as the CVE identifier and description.
+
+---
+
+# Practical Activities
+
+- Refactored the NVD retrieval script into a reusable function.
+- Imported the function into the FastAPI application.
+- Created the `/cves` endpoint.
+- Retrieved live vulnerability information from the NVD.
+- Returned simplified JSON responses.
+
+---
+
+# Key Learnings
+
+- Modular programming improves maintainability.
+- Separation of Concerns creates cleaner software architecture.
+- FastAPI endpoints can invoke external Python modules.
+- Data transformation reduces unnecessary information before sending responses.
+
+---
+
+# Reflection
+
+Today's implementation transformed the backend into a functional REST API capable of serving live vulnerability intelligence. Integrating the NVD retrieval module with FastAPI demonstrated how different software components communicate while maintaining a clean and scalable architecture.
+
+---
+
+# Next Steps
+
+- Learn database fundamentals.
+- Design the PostgreSQL schema.
+- Store vulnerability information permanently.
+- Replace live API calls with database queries where appropriate.

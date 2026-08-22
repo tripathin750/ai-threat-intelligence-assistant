@@ -1,0 +1,123 @@
+# AI-Based Threat Intelligence Assistant
+
+# Day 10 – FastAPI, SQLAlchemy and PostgreSQL Integration
+
+**Date:** 25 July 2026
+
+---
+
+# Objective
+
+The objective of today's session was to integrate the FastAPI backend with PostgreSQL using SQLAlchemy. I learned how database drivers, database engines, sessions, and ORM models work together to provide persistent storage for vulnerability intelligence.
+
+---
+
+# Topics Studied
+
+## Database Driver
+
+A database driver is software that allows an application to communicate with a specific database system. The project uses Psycopg to enable Python and SQLAlchemy to communicate with PostgreSQL.
+
+---
+
+## SQLAlchemy Engine
+
+The SQLAlchemy engine manages communication between the Python application and PostgreSQL.
+
+---
+
+## Database Session
+
+A database session represents an active interaction with the database. It allows the application to query, insert, update, and delete records.
+
+Sessions should be properly closed after use to avoid unnecessary database connections remaining open.
+
+---
+
+## SQLAlchemy Model
+
+A SQLAlchemy model is a Python class that represents a database table.
+
+The `Vulnerability` model represents the project's `vulnerabilities` table.
+
+---
+
+## Database Dependency
+
+FastAPI dependencies can be used to provide database sessions to API endpoints. A session is created when required and closed after the request has been processed.
+
+---
+
+## Database Transactions
+
+Database operations are performed within transactions.
+
+`db.add()` stages an object for insertion, while `db.commit()` permanently saves the transaction.
+
+---
+
+## Persistent Storage
+
+Previously, vulnerability data was retrieved directly from the NVD API. PostgreSQL now provides persistent storage, allowing the application to maintain its own searchable collection of vulnerability information.
+
+---
+
+# Practical Activities
+
+- Installed SQLAlchemy and Psycopg.
+- Created the SQLAlchemy database connection.
+- Created the `Vulnerability` model.
+- Configured a PostgreSQL database session.
+- Connected FastAPI to PostgreSQL.
+- Created database records using SQLAlchemy.
+- Retrieved stored vulnerability records through the FastAPI `/cves` endpoint.
+- Reviewed secure handling of database credentials.
+
+---
+
+# Data Flow
+
+The implemented architecture follows:
+
+NVD API
+↓
+Python Data Collection
+↓
+FastAPI
+↓
+SQLAlchemy
+↓
+PostgreSQL
+↓
+FastAPI `/cves`
+↓
+Client
+
+---
+
+# Key Learnings
+
+- Database drivers allow applications to communicate with databases.
+- SQLAlchemy provides an abstraction layer between Python and PostgreSQL.
+- ORM models represent database tables as Python classes.
+- Database sessions manage interactions with PostgreSQL.
+- Transactions ensure that database changes are properly committed.
+- Persistent storage allows the application to maintain vulnerability intelligence independently of the NVD API.
+
+---
+
+# Reflection
+
+Today's session was an important implementation milestone because the project now has persistent data storage. The application is no longer dependent on retrieving vulnerability information directly for every request.
+
+The integration of FastAPI, SQLAlchemy, and PostgreSQL provides a foundation for implementing more advanced capabilities such as vulnerability searching, filtering, historical analysis, MITRE ATT&CK mappings, and AI-generated threat intelligence.
+
+---
+
+# Next Steps
+
+- Improve the NVD ingestion process.
+- Extract CVSS and CWE information reliably.
+- Handle duplicate CVE records.
+- Add error handling and logging.
+- Create search and filtering endpoints.

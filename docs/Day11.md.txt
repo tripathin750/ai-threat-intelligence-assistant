@@ -1,0 +1,158 @@
+# AI-Based Threat Intelligence Assistant
+
+# Day 11 – NVD Data Extraction, Normalization and Validation
+
+**Date:** 26 July 2026
+
+---
+
+# Objective
+
+The objective of today's session was to improve the vulnerability data ingestion pipeline by learning how to extract, normalize, and validate information received from the National Vulnerability Database (NVD).
+
+The focus was on converting complex NVD JSON responses into a consistent internal structure suitable for PostgreSQL storage and later AI analysis.
+
+---
+
+# Topics Studied
+
+## Data Extraction
+
+Data extraction is the process of selecting relevant information from a larger dataset.
+
+For the project, important fields include:
+
+- CVE ID
+- Description
+- CVSS Score
+- Severity
+- CWE
+- Published Date
+- Last Modified Date
+- Source
+
+---
+
+## Data Normalization
+
+Data normalization converts information from different formats into a consistent representation.
+
+For example, severity values can be normalized to a consistent format such as:
+
+CRITICAL
+
+This makes searching, filtering, and analysis more reliable.
+
+---
+
+## Data Validation
+
+Data validation ensures that incoming information meets expected requirements before being stored or processed.
+
+Examples include:
+
+- Ensuring a CVE ID exists.
+- Ensuring a CVSS score is between 0 and 10.
+- Checking that required fields are present.
+- Handling optional fields safely.
+
+---
+
+## Handling Optional NVD Fields
+
+NVD records do not always contain identical information. Some fields, such as CVSS metrics or weaknesses, may be unavailable for certain records.
+
+The application therefore uses safe extraction methods and default values rather than assuming every field exists.
+
+---
+
+## CVSS Version Handling
+
+The NVD can provide different CVSS versions.
+
+The project will prioritize available CVSS information using:
+
+1. CVSS v4.0
+2. CVSS v3.1
+3. CVSS v3.0
+4. CVSS v2.0
+
+If no CVSS information is available, the value will remain null.
+
+---
+
+## NVD Pagination
+
+The NVD CVE API uses `startIndex`, `resultsPerPage`, and `totalResults` to support pagination.
+
+Pagination will be required when retrieving large numbers of vulnerability records.
+
+---
+
+# Practical Activities
+
+- Examined the structure of NVD CVE JSON responses.
+- Identified important fields required by the project.
+- Implemented safe extraction of descriptions.
+- Implemented CWE extraction.
+- Implemented CVSS extraction.
+- Created a normalized vulnerability structure.
+- Added basic validation logic.
+- Considered pagination and incremental synchronization.
+
+---
+
+# Normalized Data Structure
+
+The application converts raw NVD records into:
+
+- cve_id
+- description
+- cvss_score
+- severity
+- cwe_id
+- published_date
+- last_modified
+- source
+
+This structure corresponds to the initial PostgreSQL schema.
+
+---
+
+# Key Learnings
+
+- Raw API data should not be stored blindly.
+- External data may contain optional or missing fields.
+- Normalization creates consistent application data.
+- Validation helps prevent invalid information from entering the database.
+- Different CVSS versions need to be handled carefully.
+- Pagination is necessary when processing large vulnerability datasets.
+- Incremental synchronization is more efficient than repeatedly downloading the entire dataset.
+
+---
+
+# Security Considerations
+
+Input received from external APIs should be validated before being processed or stored.
+
+The application should not assume that external data will always contain the expected fields or values.
+
+This follows the secure software development principle of validating input at trust boundaries.
+
+---
+
+# Reflection
+
+Today's session improved the reliability of the data ingestion pipeline. Instead of treating the NVD response as a structure that can be directly stored, I learned that external threat intelligence data must first be extracted, normalized, and validated.
+
+This is particularly important for the AI component because the quality and consistency of the input data directly affect the reliability of subsequent AI-generated threat intelligence.
+
+---
+
+# Next Steps
+
+- Introduce Pydantic schemas for stronger validation.
+- Improve error handling.
+- Implement duplicate detection.
+- Implement NVD pagination.
+- Store normalized CVE records in PostgreSQL.
