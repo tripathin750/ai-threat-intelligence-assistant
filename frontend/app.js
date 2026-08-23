@@ -114,10 +114,23 @@ async function loadIntelligence(cveId) {
   }
 }
 
+// Splits the (single-string) generated summary into standalone sentences so
+// it renders as bullet points rather than one dense paragraph. Purely
+// presentational — the underlying data is still one evidence-grounded string.
+function splitIntoPoints(text) {
+  return text
+    .split(/(?<=[.!?])\s+(?=[A-Z(])/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+}
+
 function renderIntelligence(data) {
   $("intelligence-empty").hidden = true;
   $("intelligence-content").hidden = false;
-  $("analysis-summary").textContent = data.analysis.summary;
+  const summary = $("analysis-summary"); summary.replaceChildren();
+  for (const point of splitIntoPoints(data.analysis.summary)) {
+    const item = document.createElement("li"); item.textContent = point; summary.append(item);
+  }
   $("analysis-impact").textContent = data.analysis.impact;
   $("analysis-risk").textContent = `Risk: ${data.analysis.risk}`;
   $("analysis-risk").className = `badge badge-${data.analysis.risk}`;
