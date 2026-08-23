@@ -43,6 +43,18 @@ def synchronize_nvd(db: Session, limit: int = 100) -> SyncResultSchema:
     updated = 0
     now = datetime.now(timezone.utc)
 
+    # NVD may have modified more CVEs in this window than `limit` allows
+    # through - fetch_modified_cves() sorts newest-first and keeps only the
+    # top `limit`, silently dropping the rest. Advancing the cursor to `now`
+    # in that case would permanently skip the dropped (older-in-window)
+    # records, since the next sync starts looking from `now` rather than
+    # resuming this window. Only advance the cursor once nothing was
+    # dropped; every write below is an upsert, so re-covering the same
+    # window next time costs a little duplicate work, never lost data.
+    total_in_window = payload.get("totalResults", len(payload.get("vulnerabilities", [])))
+    kept = len(payload.get("vulnerabilities", []))
+    truncated = total_in_window > kept
+
     try:
         for record in records:
             vulnerability = db.get(Vulnerability, record["cve_id"])
@@ -57,7 +69,8 @@ def synchronize_nvd(db: Session, limit: int = 100) -> SyncResultSchema:
             state = SyncState(source="NVD")
             db.add(state)
         state.last_attempted_sync = now
-        state.last_successful_sync = now
+        if not truncated:
+            state.last_successful_sync = now
         state.updated_records = created + updated
         db.commit()
     except SQLAlchemyError:

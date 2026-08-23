@@ -112,6 +112,37 @@ class IngestionServiceTests(unittest.TestCase):
             second_call_arg = mocked_fetch.call_args.args[0]
             self.assertIsNotNone(second_call_arg)  # now passes the stored timestamp
 
+    def test_truncated_window_does_not_advance_the_cursor(self) -> None:
+        # NVD reports more CVEs modified in this window (totalResults=5) than
+        # `limit` let through (only 2 kept) - the cursor must not jump to
+        # "now", or the 3 dropped-for-space records would be permanently
+        # skipped since the next sync would start looking from "now" instead
+        # of resuming this window.
+        truncated_payload = _nvd_payload(_cve("CVE-2026-50006"), _cve("CVE-2026-50007"))
+        truncated_payload["totalResults"] = 5
+
+        with patch.object(ingestion_service, "fetch_modified_cves", return_value=truncated_payload):
+            ingestion_service.synchronize_nvd(self.db, limit=2)
+
+        state = self.db.get(SyncState, "NVD")
+        self.assertIsNotNone(state)
+        self.assertIsNotNone(state.last_attempted_sync)  # the attempt is still recorded
+        self.assertIsNone(state.last_successful_sync)  # but the cursor did not advance
+        self.assertEqual(self.db.query(Vulnerability).count(), 2)  # the kept records are still stored
+
+    def test_untruncated_window_advances_the_cursor(self) -> None:
+        # The counterpart to the test above: when NVD returned everything
+        # that was actually modified in the window (nothing left behind),
+        # the cursor must advance so the next sync doesn't refetch it.
+        full_payload = _nvd_payload(_cve("CVE-2026-50008"))
+        self.assertEqual(full_payload["totalResults"], 1)
+
+        with patch.object(ingestion_service, "fetch_modified_cves", return_value=full_payload):
+            ingestion_service.synchronize_nvd(self.db, limit=100)
+
+        state = self.db.get(SyncState, "NVD")
+        self.assertIsNotNone(state.last_successful_sync)
+
 
 if __name__ == "__main__":
     unittest.main()

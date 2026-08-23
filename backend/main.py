@@ -121,7 +121,7 @@ def get_live_cves(limit: int = Query(default=5, ge=1, le=100)) -> list[dict[str,
 
 @app.post("/cves/sync", response_model=SyncResultSchema, dependencies=[Depends(verify_api_key)])
 def sync_cves(
-    limit: int = Query(default=100, ge=1, le=2000), db: Session = Depends(get_db)
+    limit: int = Query(default=2000, ge=1, le=2000), db: Session = Depends(get_db)
 ) -> SyncResultSchema:
     """Incrementally fetch, validate and upsert NVD records."""
     try:

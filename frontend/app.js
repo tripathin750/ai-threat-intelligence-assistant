@@ -155,7 +155,7 @@ function renderIntelligence(data) {
 async function syncCves() {
   const button = $("sync-button"); button.disabled = true; setStatus("Synchronizing recent NVD CVEs…");
   try {
-    const result = await api("/cves/sync?limit=100", { method: "POST" });
+    const result = await api("/cves/sync?limit=2000", { method: "POST" });
     state.offset = 0;
     setStatus(`Sync complete: ${result.created} created, ${result.updated} updated, ${result.skipped} skipped.`);
     await loadCves();
