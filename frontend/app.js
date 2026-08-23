@@ -163,10 +163,43 @@ async function syncCves() {
   finally { button.disabled = false; }
 }
 
+// Decorative digital-rain background for the Matrix theme. Skipped entirely
+// under prefers-reduced-motion, and cheap enough (one fillRect + column of
+// glyphs, ~16fps) not to compete with the actual dashboard for CPU.
+function initMatrixRain() {
+  const canvas = $("matrix-rain");
+  if (!canvas || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const ctx = canvas.getContext("2d");
+  const glyphs = "アイウエオカキクケコサシスセソタチツテト0123456789";
+  const fontSize = 15;
+  let columns = [];
+
+  function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    const count = Math.floor(canvas.width / fontSize);
+    columns = Array.from({ length: count }, () => Math.floor(Math.random() * -50));
+  }
+  resize();
+  window.addEventListener("resize", resize);
+
+  ctx.font = `${fontSize}px "JetBrains Mono", monospace`;
+  setInterval(() => {
+    ctx.fillStyle = "rgba(1, 6, 3, 0.15)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#39ff14";
+    columns.forEach((y, i) => {
+      ctx.fillText(glyphs[Math.floor(Math.random() * glyphs.length)], i * fontSize, y * fontSize);
+      columns[i] = y * fontSize > canvas.height && Math.random() > 0.975 ? 0 : y + 1;
+    });
+  }, 60);
+}
+
 $("search-button").addEventListener("click", () => { state.offset = 0; loadCves(); });
 $("search-input").addEventListener("keydown", (event) => { if (event.key === "Enter") { state.offset = 0; loadCves(); } });
 $("sync-button").addEventListener("click", syncCves);
 $("previous-button").addEventListener("click", () => { state.offset = Math.max(0, state.offset - state.limit); loadCves(); });
 $("next-button").addEventListener("click", () => { state.offset += state.limit; loadCves(); });
 initApiKeyField();
+initMatrixRain();
 loadCves();
