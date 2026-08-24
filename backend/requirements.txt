@@ -1,3 +1,4 @@
+anthropic
 fastapi
 pydantic
 psycopg[binary]

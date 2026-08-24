@@ -160,9 +160,18 @@ ALLOWED_HOSTS=*
 RATE_LIMIT_PER_MINUTE=120
 ENABLE_SCHEDULER=false
 SYNC_INTERVAL_MINUTES=60
+ANTHROPIC_API_KEY=              # optional; enables real Claude-generated analysis (services/llm_service.py)
+LLM_MODEL=claude-opus-5
+ENABLE_LLM_ANALYSIS=true        # set false to force the deterministic analyser even with a key set
 ```
 
 `.env` files are gitignored — never commit real credentials.
+
+### AI-generated analysis (optional)
+
+By default, every CVE's "AI-assisted summary," risk rating, and evidence list come from a deterministic, rules-based analyser (`backend/services/ai_service.py`, model name `evidence-based-rules-v1`) — it reflows the NVD-supplied fields into readable text and invents nothing. No API key is needed to run the app or its test suite.
+
+Setting `ANTHROPIC_API_KEY` switches CVE analysis over to a real Claude call (`backend/services/llm_service.py`), using the schema-constrained prompt already defined in `backend/services/prompts.py`. The model's JSON response is validated with Pydantic (`LLMAnalysisOutputSchema`) before it's ever stored, exactly like inbound NVD data — a malformed or off-schema response, an auth failure, or a rate limit falls back to the deterministic analyser automatically (recorded as `evidence-based-rules-v1-fallback` in the `model` field) rather than breaking `/intelligence`. `LLM_MODEL` defaults to `claude-opus-5`; `ENABLE_LLM_ANALYSIS=false` forces the deterministic path even with a key configured.
 
 **Before any non-local deployment**, set `ALLOWED_HOSTS` explicitly to your real hostname(s) (e.g. `ALLOWED_HOSTS=api.example.com`) — the `*` default disables `TrustedHostMiddleware` entirely and is meant for local development only (see `docs/Day29.md`).
 
