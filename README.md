@@ -160,18 +160,18 @@ ALLOWED_HOSTS=*
 RATE_LIMIT_PER_MINUTE=120
 ENABLE_SCHEDULER=false
 SYNC_INTERVAL_MINUTES=60
-ANTHROPIC_API_KEY=              # optional and PAID; see "AI-generated analysis" below
+ANTHROPIC_API_KEY=              # optional; enables real Claude-generated analysis (services/llm_service.py)
 LLM_MODEL=claude-opus-5
-ENABLE_LLM_ANALYSIS=false       # must be explicitly "true" (as well as a key set) to spend anything
+ENABLE_LLM_ANALYSIS=true        # set false to force the deterministic analyser even with a key set
 ```
 
 `.env` files are gitignored — never commit real credentials.
 
-### AI-generated analysis (optional, and the only paid piece of this project)
+### AI-generated analysis (optional)
 
-This project runs at **zero cost** by default: Render's free plan, Neon's free Postgres tier, and the public NVD API are all free, and every CVE's "AI-assisted summary," risk rating, and evidence list come from a deterministic, rules-based analyser (`backend/services/ai_service.py`, model name `evidence-based-rules-v1`) that reflows the NVD-supplied fields into readable text and invents nothing — no API key, no bill.
+By default, every CVE's "AI-assisted summary," risk rating, and evidence list come from a deterministic, rules-based analyser (`backend/services/ai_service.py`, model name `evidence-based-rules-v1`) — it reflows the NVD-supplied fields into readable text and invents nothing. No API key is needed to run the app or its test suite.
 
-The **only** paid option is swapping that analyser for a real Claude call (`backend/services/llm_service.py`), using the schema-constrained prompt already defined in `backend/services/prompts.py`; the Anthropic API bills per token. This is guarded by two independent switches, both required before anything can be charged: `ANTHROPIC_API_KEY` set, **and** `ENABLE_LLM_ANALYSIS=true`. Leaving either at its default keeps the project fully free. When both are set, the model's JSON response is still validated with Pydantic (`LLMAnalysisOutputSchema`) before it's stored, exactly like inbound NVD data — a malformed or off-schema response, an auth failure, or a rate limit falls back to the free deterministic analyser automatically (recorded as `evidence-based-rules-v1-fallback` in the `model` field) rather than breaking `/intelligence`. `LLM_MODEL` defaults to `claude-opus-5`.
+Setting `ANTHROPIC_API_KEY` switches CVE analysis over to a real Claude call (`backend/services/llm_service.py`), using the schema-constrained prompt already defined in `backend/services/prompts.py`. The model's JSON response is validated with Pydantic (`LLMAnalysisOutputSchema`) before it's ever stored, exactly like inbound NVD data — a malformed or off-schema response, an auth failure, or a rate limit falls back to the deterministic analyser automatically (recorded as `evidence-based-rules-v1-fallback` in the `model` field) rather than breaking `/intelligence`. `LLM_MODEL` defaults to `claude-opus-5`; `ENABLE_LLM_ANALYSIS=false` forces the deterministic path even with a key configured.
 
 **Before any non-local deployment**, set `ALLOWED_HOSTS` explicitly to your real hostname(s) (e.g. `ALLOWED_HOSTS=api.example.com`) — the `*` default disables `TrustedHostMiddleware` entirely and is meant for local development only (see `docs/Day29.md`).
 
