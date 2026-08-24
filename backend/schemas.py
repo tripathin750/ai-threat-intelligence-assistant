@@ -10,6 +10,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 CVE_ID_PATTERN = re.compile(r"^CVE-\d{4}-\d{4,}$")
 CWE_ID_PATTERN = re.compile(r"^CWE-\d+$")
 VALID_SEVERITIES = frozenset({"NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"})
+# The analysis `risk` field additionally allows UNKNOWN (severity does not -
+# NVD either supplies a real severity or the field is left absent/None).
+VALID_RISK_LEVELS = VALID_SEVERITIES | {"UNKNOWN"}
 
 
 class VulnerabilitySchema(BaseModel):
@@ -47,6 +50,36 @@ class VulnerabilitySchema(BaseModel):
     @classmethod
     def normalize_cwe_id(cls, value: object) -> object:
         return value.strip().upper() if isinstance(value, str) else value
+
+
+class LLMAnalysisOutputSchema(BaseModel):
+    """The exact JSON contract services/prompts.py's SYSTEM_PROMPT asks the
+    model for. The provider's raw JSON response is validated against this
+    before it ever reaches the database - the same "validate everything
+    external" rule this project applies to inbound NVD records - so a
+    malformed or hallucinated shape from any LLM provider is rejected here.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    summary: str = Field(min_length=1)
+    impact: str = Field(min_length=1)
+    affected_component: str = Field(min_length=1)
+    risk: str
+    confidence: float = Field(ge=0, le=1)
+    evidence: list[str] = Field(min_length=1)
+
+    @field_validator("risk", mode="before")
+    @classmethod
+    def normalize_risk(cls, value: object) -> object:
+        return value.strip().upper() if isinstance(value, str) else value
+
+    @field_validator("risk")
+    @classmethod
+    def validate_risk(cls, value: str) -> str:
+        if value not in VALID_RISK_LEVELS:
+            raise ValueError("must be a recognized risk level")
+        return value
 
 
 class SyncResultSchema(BaseModel):

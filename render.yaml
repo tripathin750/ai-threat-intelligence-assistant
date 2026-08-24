@@ -30,3 +30,9 @@ services:
         sync: false   # optional — leave unset for an open demo, or set one and use the dashboard's API key field
       - key: NVD_API_KEY
         sync: false   # optional — raises the NVD request-rate quota
+      - key: GROQ_API_KEY
+        sync: false   # optional — Groq's free developer tier has no credit system, only rate limits, so this stays free. Set to enable real LLM-generated analysis; unset falls back to the deterministic rules-based analyser.
+      - key: GROQ_MODEL
+        value: qwen/qwen3.6-27b
+      - key: ENABLE_LLM_ANALYSIS
+        value: "false"   # a second, explicit opt-in — LLM calls only happen if this is "true" AND GROQ_API_KEY is set

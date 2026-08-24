@@ -17,8 +17,8 @@ from ..schemas import (
     MitigationRecommendationSchema,
     VulnerabilitySchema,
 )
-from .ai_service import analyse_vulnerability
 from .attack_service import infer_attack_techniques
+from .llm_service import generate_analysis
 from .mitigation_service import recommend_mitigations
 
 
@@ -71,7 +71,7 @@ def build_intelligence(
 
 def _generate_intelligence(db: Session, vulnerability: Vulnerability) -> None:
     normalized = VulnerabilitySchema.model_validate(vulnerability)
-    analysis_result = analyse_vulnerability(normalized)
+    analysis_result = generate_analysis(normalized)
     analysis = vulnerability.analysis
     if analysis is None:
         analysis = IntelligenceAnalysis(cve_id=vulnerability.cve_id)
