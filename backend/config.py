@@ -70,10 +70,13 @@ def get_settings() -> Settings:
         # claude-opus-5 per this project's default model policy; override via
         # LLM_MODEL if a different Claude model is preferred.
         llm_model=os.getenv("LLM_MODEL", "claude-opus-5"),
-        # Even with a key configured, this can force the deterministic
-        # rules-based analyser (services/ai_service.py) - useful for a
-        # reproducible offline demo or to avoid API spend on request.
-        enable_llm_analysis=os.getenv("ENABLE_LLM_ANALYSIS", "true").lower()
+        # Defaults to OFF: this project is meant to run at zero cost, and the
+        # Anthropic API is paid per token (unlike everything else in this
+        # stack). Getting a real LLM call requires BOTH setting
+        # ANTHROPIC_API_KEY AND explicitly opting in here with
+        # ENABLE_LLM_ANALYSIS=true - a single accidental env var is never
+        # enough to start incurring charges.
+        enable_llm_analysis=os.getenv("ENABLE_LLM_ANALYSIS", "false").lower()
         in {"1", "true", "yes"},
     )
 

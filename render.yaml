@@ -31,8 +31,8 @@ services:
       - key: NVD_API_KEY
         sync: false   # optional — raises the NVD request-rate quota
       - key: ANTHROPIC_API_KEY
-        sync: false   # optional — set to enable real Claude-generated analysis; unset falls back to the deterministic rules-based analyser
+        sync: false   # optional and PAID — the Anthropic API bills per token, unlike every other free piece of this stack. Leave unset to keep this project free (deterministic analyser only).
       - key: LLM_MODEL
         value: claude-opus-5
       - key: ENABLE_LLM_ANALYSIS
-        value: "true"   # set to "false" to force the deterministic analyser even with ANTHROPIC_API_KEY set
+        value: "false"   # a second, explicit opt-in — real Claude calls only ever happen if this is "true" AND ANTHROPIC_API_KEY is set
