@@ -30,9 +30,3 @@ services:
         sync: false   # optional — leave unset for an open demo, or set one and use the dashboard's API key field
       - key: NVD_API_KEY
         sync: false   # optional — raises the NVD request-rate quota
-      - key: ANTHROPIC_API_KEY
-        sync: false   # optional — set to enable real Claude-generated analysis; unset falls back to the deterministic rules-based analyser
-      - key: LLM_MODEL
-        value: claude-opus-5
-      - key: ENABLE_LLM_ANALYSIS
-        value: "true"   # set to "false" to force the deterministic analyser even with ANTHROPIC_API_KEY set

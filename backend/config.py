@@ -48,9 +48,6 @@ class Settings:
     rate_limit_per_minute: int
     enable_scheduler: bool
     sync_interval_minutes: int
-    anthropic_api_key: str | None
-    llm_model: str
-    enable_llm_analysis: bool
 
 
 def get_settings() -> Settings:
@@ -66,15 +63,6 @@ def get_settings() -> Settings:
         enable_scheduler=os.getenv("ENABLE_SCHEDULER", "false").lower()
         in {"1", "true", "yes"},
         sync_interval_minutes=max(5, int(os.getenv("SYNC_INTERVAL_MINUTES", "60"))),
-        anthropic_api_key=os.getenv("ANTHROPIC_API_KEY") or None,
-        # claude-opus-5 per this project's default model policy; override via
-        # LLM_MODEL if a different Claude model is preferred.
-        llm_model=os.getenv("LLM_MODEL", "claude-opus-5"),
-        # Even with a key configured, this can force the deterministic
-        # rules-based analyser (services/ai_service.py) - useful for a
-        # reproducible offline demo or to avoid API spend on request.
-        enable_llm_analysis=os.getenv("ENABLE_LLM_ANALYSIS", "true").lower()
-        in {"1", "true", "yes"},
     )
 
 
