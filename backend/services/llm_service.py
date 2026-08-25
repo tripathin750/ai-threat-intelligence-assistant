@@ -29,7 +29,11 @@ from .prompts import SYSTEM_PROMPT, build_user_prompt
 logger = logging.getLogger(__name__)
 
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
-REQUEST_TIMEOUT_SECONDS = 30
+# Structured-output requests (responseSchema) appear to take noticeably
+# longer than plain text generation, and Render's free tier throttles CPU,
+# so 30s wasn't enough headroom - a real request timed out in production
+# with no other error. 55s stays under a plausible ~60s outer proxy limit.
+REQUEST_TIMEOUT_SECONDS = 55
 # Bounded on purpose: the JSON contract is a handful of short strings plus a
 # small evidence list, never a long free-form essay.
 MAX_OUTPUT_TOKENS = 1024
