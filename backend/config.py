@@ -48,8 +48,8 @@ class Settings:
     rate_limit_per_minute: int
     enable_scheduler: bool
     sync_interval_minutes: int
-    groq_api_key: str | None
-    groq_model: str
+    gemini_api_key: str | None
+    gemini_model: str
     enable_llm_analysis: bool
 
 
@@ -66,12 +66,12 @@ def get_settings() -> Settings:
         enable_scheduler=os.getenv("ENABLE_SCHEDULER", "false").lower()
         in {"1", "true", "yes"},
         sync_interval_minutes=max(5, int(os.getenv("SYNC_INTERVAL_MINUTES", "60"))),
-        groq_api_key=os.getenv("GROQ_API_KEY") or None,
-        # Groq's free developer tier has no credit system and no per-token
-        # charge - just rate limits - so this is genuinely free, unlike a
-        # metered-credit provider. Model catalogue shifts over time; check
-        # https://console.groq.com/docs/models for current IDs.
-        groq_model=os.getenv("GROQ_MODEL", "qwen/qwen3.6-27b"),
+        gemini_api_key=os.getenv("GEMINI_API_KEY") or None,
+        # Google AI Studio's free tier (no credit card) covers the Flash /
+        # Flash-Lite models with per-minute and per-day rate limits rather
+        # than a metered credit pool, so this is genuinely free. Check
+        # https://ai.google.dev/gemini-api/docs/models for current IDs.
+        gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite"),
         # Requires an explicit opt-in as well as a key, so a stray env var
         # never silently changes app behaviour in production.
         enable_llm_analysis=os.getenv("ENABLE_LLM_ANALYSIS", "false").lower()

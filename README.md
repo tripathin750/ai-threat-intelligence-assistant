@@ -160,9 +160,9 @@ ALLOWED_HOSTS=*
 RATE_LIMIT_PER_MINUTE=120
 ENABLE_SCHEDULER=false
 SYNC_INTERVAL_MINUTES=60
-GROQ_API_KEY=                   # optional; see "AI-generated analysis" below
-GROQ_MODEL=qwen/qwen3.6-27b
-ENABLE_LLM_ANALYSIS=false       # must be explicitly "true" (as well as a key set) to use Groq
+GEMINI_API_KEY=                 # optional; see "AI-generated analysis" below
+GEMINI_MODEL=gemini-2.5-flash-lite
+ENABLE_LLM_ANALYSIS=false       # must be explicitly "true" (as well as a key set) to use Gemini
 ```
 
 `.env` files are gitignored — never commit real credentials.
@@ -171,9 +171,9 @@ ENABLE_LLM_ANALYSIS=false       # must be explicitly "true" (as well as a key se
 
 This project runs at **zero cost**: Render's free plan, Neon's free Postgres tier, and the public NVD API are all free. By default, every CVE's "AI-assisted summary," risk rating, and evidence list come from a deterministic, rules-based analyser (`backend/services/ai_service.py`, model name `evidence-based-rules-v1`) that reflows the NVD-supplied fields into readable text and invents nothing — no API key, no bill.
 
-Setting `GROQ_API_KEY` (and `ENABLE_LLM_ANALYSIS=true`) switches CVE analysis over to a real LLM call via [Groq](https://console.groq.com) (`backend/services/llm_service.py`), using the schema-constrained prompt already defined in `backend/services/prompts.py`. Groq was chosen deliberately: its free developer tier has no credit system and no per-token charge — just rate limits (roughly 14,400 requests/day, 30/minute at time of writing) — so it stays genuinely free indefinitely, unlike metered-credit providers (Anthropic, OpenAI, and even Hugging Face's own "free" tier, which routes most modern chat models through paid third-party providers past a trivial $0.10/month credit). `GROQ_MODEL` defaults to `qwen/qwen3.6-27b`; Groq's model catalogue shifts over time, so check [console.groq.com/docs/models](https://console.groq.com/docs/models) for current IDs.
+Setting `GEMINI_API_KEY` (and `ENABLE_LLM_ANALYSIS=true`) switches CVE analysis over to a real LLM call via [Google's Gemini API](https://aistudio.google.com/app/apikey) (`backend/services/llm_service.py`), using the schema-constrained prompt already defined in `backend/services/prompts.py`. Gemini's Flash / Flash-Lite models were chosen deliberately: Google AI Studio's free tier needs no credit card and is governed by per-minute/per-day rate limits rather than a metered credit pool, so it stays genuinely free — unlike Anthropic and OpenAI (paid per token with no ongoing free tier) or Hugging Face's own "free" tier (a $0.10/month credit pool that most modern chat models exhaust in a handful of requests, per HF's own pricing docs). `GEMINI_MODEL` defaults to `gemini-2.5-flash-lite`; Google's model catalogue shifts over time, so check [ai.google.dev/gemini-api/docs/models](https://ai.google.dev/gemini-api/docs/models) for current IDs.
 
-Both switches (`GROQ_API_KEY` set **and** `ENABLE_LLM_ANALYSIS=true`) are required before any Groq call happens — leaving either at its default keeps the deterministic analyser in charge. Whenever Groq *is* enabled, the model's JSON response is still validated with Pydantic (`LLMAnalysisOutputSchema`) before it's stored, exactly like inbound NVD data — a malformed response, a rate limit, or a network error falls back to the deterministic analyser automatically (recorded as `evidence-based-rules-v1-fallback` in the `model` field) rather than breaking `/intelligence`.
+Both switches (`GEMINI_API_KEY` set **and** `ENABLE_LLM_ANALYSIS=true`) are required before any Gemini call happens — leaving either at its default keeps the deterministic analyser in charge. Whenever Gemini *is* enabled, the model's JSON response is still validated with Pydantic (`LLMAnalysisOutputSchema`) before it's stored, exactly like inbound NVD data — a malformed response, a rate limit, or a network error falls back to the deterministic analyser automatically (recorded as `evidence-based-rules-v1-fallback` in the `model` field) rather than breaking `/intelligence`.
 
 **Before any non-local deployment**, set `ALLOWED_HOSTS` explicitly to your real hostname(s) (e.g. `ALLOWED_HOSTS=api.example.com`) — the `*` default disables `TrustedHostMiddleware` entirely and is meant for local development only (see `docs/Day29.md`).
 

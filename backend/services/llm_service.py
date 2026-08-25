@@ -1,12 +1,13 @@
-"""Groq-backed vulnerability analysis - the LLM half of the evidence-based
+"""Gemini-backed vulnerability analysis - the LLM half of the evidence-based
 seam described in services/prompts.py.
 
-Groq was chosen over a metered-credit provider because its free developer
-tier has no credit system and no per-token charge - just rate limits - so
-this can run indefinitely at zero cost (see README's "AI-generated
-analysis" section for the reasoning and the rejected alternatives).
+Google's Gemini API (Flash / Flash-Lite models) was chosen for its free
+tier: no credit card, and limits are per-minute/per-day rate limits rather
+than a metered credit pool that runs out after a handful of requests (see
+README's "AI-generated analysis" section for the fuller reasoning, and why
+Anthropic and Hugging Face were ruled out first).
 
-This module is the only place that calls out to Groq. It is designed to
+This module is the only place that calls out to Gemini. It is designed to
 fail closed: any request error, rate limit, or response that does not match
 LLMAnalysisOutputSchema falls back to the deterministic rules-based analyser
 in ai_service.py rather than ever breaking the /intelligence endpoint or
@@ -27,15 +28,34 @@ from .prompts import SYSTEM_PROMPT, build_user_prompt
 
 logger = logging.getLogger(__name__)
 
-GROQ_CHAT_COMPLETIONS_URL = "https://api.groq.com/openai/v1/chat/completions"
+GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 REQUEST_TIMEOUT_SECONDS = 30
 # Bounded on purpose: the JSON contract is a handful of short strings plus a
 # small evidence list, never a long free-form essay.
 MAX_OUTPUT_TOKENS = 1024
 
+# A hand-written subset of LLMAnalysisOutputSchema's shape, using only the
+# JSON Schema keywords Gemini's structured-output mode documents support
+# (type, properties, required, items). Pydantic's own model_json_schema()
+# emits keywords (e.g. $defs, additionalProperties) outside that subset, so
+# it is not reused directly here - this schema only shapes the model's
+# output; LLMAnalysisOutputSchema below is still what actually validates it.
+_GEMINI_RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "summary": {"type": "string"},
+        "impact": {"type": "string"},
+        "affected_component": {"type": "string"},
+        "risk": {"type": "string"},
+        "confidence": {"type": "number"},
+        "evidence": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["summary", "impact", "affected_component", "risk", "confidence", "evidence"],
+}
+
 
 class LLMAnalysisError(RuntimeError):
-    """Raised when Groq cannot produce a valid analysis.
+    """Raised when Gemini cannot produce a valid analysis.
 
     Callers should catch this (generate_analysis() already does) and fall
     back to the deterministic analyser - never let a provider outage, rate
@@ -45,38 +65,40 @@ class LLMAnalysisError(RuntimeError):
 
 
 def analyse_with_llm(vulnerability: VulnerabilitySchema) -> AnalysisResult:
-    """Ask Groq to analyze one CVE and return a validated AnalysisResult.
+    """Ask Gemini to analyze one CVE and return a validated AnalysisResult.
 
     Raises LLMAnalysisError on any request failure or schema mismatch.
-    Never called with unset settings.groq_api_key - generate_analysis()
+    Never called with unset settings.gemini_api_key - generate_analysis()
     guards that.
     """
     try:
         response = requests.post(
-            GROQ_CHAT_COMPLETIONS_URL,
-            headers={"Authorization": f"Bearer {settings.groq_api_key}"},
+            f"{GEMINI_API_BASE}/{settings.gemini_model}:generateContent",
+            params={"key": settings.gemini_api_key},
             json={
-                "model": settings.groq_model,
-                "max_tokens": MAX_OUTPUT_TOKENS,
-                "response_format": {"type": "json_object"},
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": build_user_prompt(vulnerability)},
+                "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+                "contents": [
+                    {"role": "user", "parts": [{"text": build_user_prompt(vulnerability)}]}
                 ],
+                "generationConfig": {
+                    "responseMimeType": "application/json",
+                    "responseSchema": _GEMINI_RESPONSE_SCHEMA,
+                    "maxOutputTokens": MAX_OUTPUT_TOKENS,
+                },
             },
             timeout=REQUEST_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
         payload = response.json()
     except requests.RequestException as exc:
-        raise LLMAnalysisError(f"Groq API call failed: {exc}") from exc
+        raise LLMAnalysisError(f"Gemini API call failed: {exc}") from exc
     except ValueError as exc:
-        raise LLMAnalysisError("Groq returned a non-JSON response.") from exc
+        raise LLMAnalysisError("Gemini returned a non-JSON response.") from exc
 
     try:
-        content = payload["choices"][0]["message"]["content"]
+        content = payload["candidates"][0]["content"]["parts"][0]["text"]
     except (KeyError, IndexError, TypeError) as exc:
-        raise LLMAnalysisError(f"Unexpected Groq response shape: {payload!r}") from exc
+        raise LLMAnalysisError(f"Unexpected Gemini response shape: {payload!r}") from exc
 
     try:
         parsed = LLMAnalysisOutputSchema.model_validate_json(content)
@@ -90,12 +112,12 @@ def analyse_with_llm(vulnerability: VulnerabilitySchema) -> AnalysisResult:
         risk=parsed.risk,
         confidence=parsed.confidence,
         evidence=parsed.evidence,
-        model=f"groq:{settings.groq_model}",
+        model=f"gemini:{settings.gemini_model}",
     )
 
 
 def generate_analysis(vulnerability: VulnerabilitySchema) -> AnalysisResult:
-    """Prefer Groq; fall back to the deterministic, evidence-based-rules
+    """Prefer Gemini; fall back to the deterministic, evidence-based-rules
     analyser whenever the LLM path isn't usable.
 
     This is the single entry point intelligence_service.py should call - it
@@ -104,7 +126,7 @@ def generate_analysis(vulnerability: VulnerabilitySchema) -> AnalysisResult:
     and log, don't crash" discipline this project already applies to
     untrusted NVD data.
     """
-    if not (settings.enable_llm_analysis and settings.groq_api_key):
+    if not (settings.enable_llm_analysis and settings.gemini_api_key):
         return analyse_vulnerability(vulnerability)
 
     try:
@@ -120,7 +142,7 @@ def generate_analysis(vulnerability: VulnerabilitySchema) -> AnalysisResult:
         # change this code hasn't been updated for) must still degrade to
         # the deterministic analyser rather than 500 the whole endpoint.
         logger.exception(
-            "Unexpected error calling Groq for %s; falling back to the deterministic analyser.",
+            "Unexpected error calling Gemini for %s; falling back to the deterministic analyser.",
             vulnerability.cve_id,
         )
     fallback = analyse_vulnerability(vulnerability)

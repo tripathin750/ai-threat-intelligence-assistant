@@ -1,6 +1,6 @@
-"""Tests mock requests.post directly (no network, no real Groq API key), so
-this suite runs fully offline and never depends on GROQ_API_KEY being set in
-the environment.
+"""Tests mock requests.post directly (no network, no real Gemini API key), so
+this suite runs fully offline and never depends on GEMINI_API_KEY being set
+in the environment.
 """
 
 from dataclasses import replace
@@ -28,13 +28,15 @@ def _vulnerability(**overrides: object) -> VulnerabilitySchema:
 
 
 def _enabled_settings():
-    return replace(llm_service.settings, groq_api_key="gsk-test-key", enable_llm_analysis=True)
+    return replace(llm_service.settings, gemini_api_key="test-key", enable_llm_analysis=True)
 
 
-def _fake_groq_response(content: str, status_code: int = 200) -> MagicMock:
+def _fake_gemini_response(text: str, status_code: int = 200) -> MagicMock:
     response = MagicMock()
     response.status_code = status_code
-    response.json.return_value = {"choices": [{"message": {"content": content}}]}
+    response.json.return_value = {
+        "candidates": [{"content": {"parts": [{"text": text}]}}]
+    }
     if status_code >= 400:
         response.raise_for_status.side_effect = requests.HTTPError(f"{status_code} error")
     else:
@@ -57,30 +59,36 @@ VALID_MODEL_JSON = json.dumps(
 class AnalyseWithLLMTests(unittest.TestCase):
     def test_maps_a_valid_response_to_an_analysis_result(self) -> None:
         with patch.object(llm_service, "settings", _enabled_settings()):
-            with patch.object(llm_service.requests, "post", return_value=_fake_groq_response(VALID_MODEL_JSON)):
+            with patch.object(
+                llm_service.requests, "post", return_value=_fake_gemini_response(VALID_MODEL_JSON)
+            ):
                 result = analyse_with_llm(_vulnerability())
 
         self.assertEqual(result.risk, "CRITICAL")
         self.assertEqual(result.confidence, 0.85)
-        self.assertTrue(result.model.startswith("groq:"))
+        self.assertTrue(result.model.startswith("gemini:"))
 
     def test_raises_when_the_response_is_not_valid_json(self) -> None:
         with patch.object(llm_service, "settings", _enabled_settings()):
-            with patch.object(llm_service.requests, "post", return_value=_fake_groq_response("not json")):
+            with patch.object(
+                llm_service.requests, "post", return_value=_fake_gemini_response("not json")
+            ):
                 with self.assertRaises(LLMAnalysisError):
                     analyse_with_llm(_vulnerability())
 
     def test_raises_when_the_response_does_not_match_the_schema(self) -> None:
         malformed = json.dumps({"summary": "s"})  # missing every other required field
         with patch.object(llm_service, "settings", _enabled_settings()):
-            with patch.object(llm_service.requests, "post", return_value=_fake_groq_response(malformed)):
+            with patch.object(
+                llm_service.requests, "post", return_value=_fake_gemini_response(malformed)
+            ):
                 with self.assertRaises(LLMAnalysisError):
                     analyse_with_llm(_vulnerability())
 
     def test_raises_on_an_http_error(self) -> None:
         with patch.object(llm_service, "settings", _enabled_settings()):
             with patch.object(
-                llm_service.requests, "post", return_value=_fake_groq_response("", status_code=429)
+                llm_service.requests, "post", return_value=_fake_gemini_response("", status_code=429)
             ):
                 with self.assertRaises(LLMAnalysisError):
                     analyse_with_llm(_vulnerability())
@@ -93,10 +101,19 @@ class AnalyseWithLLMTests(unittest.TestCase):
                 with self.assertRaises(LLMAnalysisError):
                     analyse_with_llm(_vulnerability())
 
+    def test_raises_on_an_unexpected_response_shape(self) -> None:
+        with patch.object(llm_service, "settings", _enabled_settings()):
+            fake = MagicMock()
+            fake.raise_for_status.return_value = None
+            fake.json.return_value = {"candidates": []}  # no content at all
+            with patch.object(llm_service.requests, "post", return_value=fake):
+                with self.assertRaises(LLMAnalysisError):
+                    analyse_with_llm(_vulnerability())
+
 
 class GenerateAnalysisTests(unittest.TestCase):
     def test_uses_the_deterministic_analyser_when_no_api_key_is_configured(self) -> None:
-        disabled = replace(llm_service.settings, groq_api_key=None)
+        disabled = replace(llm_service.settings, gemini_api_key=None)
         with patch.object(llm_service, "settings", disabled):
             with patch.object(llm_service, "analyse_with_llm") as mocked_llm:
                 result = generate_analysis(_vulnerability())
@@ -105,7 +122,7 @@ class GenerateAnalysisTests(unittest.TestCase):
         self.assertEqual(result.model, "evidence-based-rules-v1")
 
     def test_uses_the_deterministic_analyser_when_disabled_even_with_a_key(self) -> None:
-        disabled = replace(llm_service.settings, groq_api_key="gsk-test-key", enable_llm_analysis=False)
+        disabled = replace(llm_service.settings, gemini_api_key="test-key", enable_llm_analysis=False)
         with patch.object(llm_service, "settings", disabled):
             with patch.object(llm_service, "analyse_with_llm") as mocked_llm:
                 result = generate_analysis(_vulnerability())
@@ -131,7 +148,7 @@ class GenerateAnalysisTests(unittest.TestCase):
     def test_uses_the_llm_result_when_the_call_succeeds(self) -> None:
         expected = llm_service.AnalysisResult(
             summary="s", impact="i", affected_component="a",
-            risk="HIGH", confidence=0.7, evidence=["e"], model="groq:qwen/qwen3.6-27b",
+            risk="HIGH", confidence=0.7, evidence=["e"], model="gemini:gemini-2.5-flash-lite",
         )
         with patch.object(llm_service, "settings", _enabled_settings()):
             with patch.object(llm_service, "analyse_with_llm", return_value=expected):
