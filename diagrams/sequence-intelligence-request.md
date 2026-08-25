@@ -1,6 +1,6 @@
 # Sequence: `POST /intelligence/{cve_id}/analyze`
 
-The request flow for the project's core feature — generating (or regenerating) a full, evidence-labelled intelligence record for one CVE.
+The request flow for the project's core feature — generating (or regenerating) a full, evidence-labelled intelligence record for one CVE. This is the current flow, including the optional LLM path (`services/llm_service.py`) — see [llm-decision-flow.md](llm-decision-flow.md) for what happens inside `generate_analysis()` itself.
 
 ```mermaid
 sequenceDiagram
@@ -8,7 +8,7 @@ sequenceDiagram
     participant API as FastAPI (main.py)
     participant Sec as Security middleware
     participant Intel as intelligence_service
-    participant AI as ai_service
+    participant LLM as llm_service.generate_analysis()
     participant ATT as attack_service
     participant MIT as mitigation_service
     participant DB as PostgreSQL/SQLite
@@ -22,12 +22,17 @@ sequenceDiagram
         API-->>User: 404 Not Found
     else CVE found
         API->>Intel: build_intelligence(db, vulnerability, refresh=True)
-        Intel->>AI: analyse_vulnerability(vulnerability)
-        AI-->>Intel: AnalysisResult (summary, impact, risk, confidence, evidence)
-        Intel->>ATT: infer_attack_techniques(vulnerability)
-        ATT-->>Intel: [InferredTechnique...] (possibly empty)
-        Intel->>MIT: recommend_mitigations(vulnerability, technique_ids)
-        MIT-->>Intel: MitigationResult
+        Intel->>LLM: generate_analysis(vulnerability)
+        Note over LLM: Gemini if enabled + configured,<br/>else (or on any failure) the<br/>deterministic rules-based analyser.<br/>Either path returns the same shape:<br/>AnalysisResult (summary, impact, risk,<br/>confidence, evidence, attack_techniques,<br/>mitigations, model)
+        LLM-->>Intel: AnalysisResult
+        alt result.model starts with "gemini:"
+            Note over Intel: use the LLM's own attack_techniques<br/>and mitigations directly (filtered against<br/>the known ATT&CK catalogue) — an empty<br/>list means "confidently found nothing",<br/>not "fall back to keyword matching"
+        else deterministic path ran
+            Intel->>ATT: infer_attack_techniques(vulnerability)
+            ATT-->>Intel: [InferredTechnique...] (possibly empty)
+            Intel->>MIT: recommend_mitigations(vulnerability, technique_ids)
+            MIT-->>Intel: MitigationResult
+        end
         Intel->>DB: upsert IntelligenceAnalysis
         Intel->>DB: delete + reinsert VulnerabilityAttackMapping rows
         Intel->>DB: upsert MitigationRecommendation

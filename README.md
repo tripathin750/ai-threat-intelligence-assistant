@@ -187,7 +187,7 @@ python -m unittest discover -s backend/tests -v
 ## Documentation
 
 - [`docs/`](docs/) — the full Day 1–30 build log: theory, implementation notes, testing evidence, and reflection for every part of the system, from CTI/MITRE ATT&CK fundamentals through the complete pipeline and its evaluation.
-- [`diagrams/`](diagrams/) — architecture, database ER, and request-sequence diagrams (Mermaid; render natively on GitHub).
+- [`diagrams/`](diagrams/) — architecture, database ER, request-sequence, and LLM-fallback-decision diagrams (Mermaid; render natively on GitHub).
 - [`dissertation/Implementation_and_Evaluation.md`](dissertation/Implementation_and_Evaluation.md) — a consolidated report synthesizing the full build into one dissertation-ready chapter, including real measured evaluation results.
 
 ## Author
