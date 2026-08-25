@@ -15,6 +15,12 @@ _TMP_DB = Path(tempfile.gettempdir()) / "threat_intelligence_test_api.db"
 _TMP_DB.unlink(missing_ok=True)
 os.environ["DATABASE_URL"] = f"sqlite:///{_TMP_DB.as_posix()}"
 os.environ.setdefault("ENABLE_SCHEDULER", "false")
+# Force the deterministic analyser regardless of the developer's local
+# backend/.env - test_full_intelligence_pipeline_end_to_end below asserts
+# on that analyser's exact output shape, and this suite must stay offline
+# and reproducible even when a real GEMINI_API_KEY is configured for
+# everyday use of the app.
+os.environ["ENABLE_LLM_ANALYSIS"] = "false"
 
 from fastapi.testclient import TestClient  # noqa: E402
 

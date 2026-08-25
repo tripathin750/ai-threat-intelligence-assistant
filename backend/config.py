@@ -71,7 +71,7 @@ def get_settings() -> Settings:
         # Flash-Lite models with per-minute and per-day rate limits rather
         # than a metered credit pool, so this is genuinely free. Check
         # https://ai.google.dev/gemini-api/docs/models for current IDs.
-        gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite"),
+        gemini_model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
         # Requires an explicit opt-in as well as a key, so a stray env var
         # never silently changes app behaviour in production.
         enable_llm_analysis=os.getenv("ENABLE_LLM_ANALYSIS", "false").lower()

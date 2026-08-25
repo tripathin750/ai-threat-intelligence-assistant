@@ -148,7 +148,7 @@ class GenerateAnalysisTests(unittest.TestCase):
     def test_uses_the_llm_result_when_the_call_succeeds(self) -> None:
         expected = llm_service.AnalysisResult(
             summary="s", impact="i", affected_component="a",
-            risk="HIGH", confidence=0.7, evidence=["e"], model="gemini:gemini-2.5-flash-lite",
+            risk="HIGH", confidence=0.7, evidence=["e"], model="gemini:gemini-3.5-flash-lite",
         )
         with patch.object(llm_service, "settings", _enabled_settings()):
             with patch.object(llm_service, "analyse_with_llm", return_value=expected):
