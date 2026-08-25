@@ -33,13 +33,36 @@ CREATE TABLE attack_techniques (
 );
 
 -- Tracks the last successful/attempted synchronization per source, enabling
--- incremental NVD ingestion instead of full re-downloads.
+-- incremental NVD ingestion instead of full re-downloads. Also reused for
+-- CISA KEV sync observability (source='CISA_KEV'), though that feed is
+-- always refreshed in full rather than incrementally.
 CREATE TABLE sync_state (
 	source VARCHAR(50) NOT NULL,
 	last_successful_sync TIMESTAMP WITH TIME ZONE,
 	last_attempted_sync TIMESTAMP WITH TIME ZONE,
 	updated_records INTEGER NOT NULL,
 	PRIMARY KEY (source)
+);
+
+-- CISA Known Exploited Vulnerabilities (KEV) catalogue entries - a second,
+-- independent authoritative source alongside NVD, tracking confirmed
+-- real-world exploitation rather than severity. No foreign key to
+-- vulnerabilities: CISA's feed is synced separately and can reference a
+-- cve_id this app hasn't (yet) ingested from NVD; joined by cve_id value
+-- alone (see Vulnerability.kev in backend/models.py).
+CREATE TABLE kev_entries (
+	cve_id VARCHAR(30) NOT NULL,
+	vendor_project VARCHAR(200) NOT NULL,
+	product VARCHAR(200) NOT NULL,
+	vulnerability_name VARCHAR(300) NOT NULL,
+	date_added DATE NOT NULL,
+	short_description TEXT NOT NULL,
+	required_action TEXT NOT NULL,
+	due_date DATE NOT NULL,
+	known_ransomware_use VARCHAR(20) NOT NULL,
+	notes TEXT,
+	synced_at TIMESTAMP WITH TIME ZONE NOT NULL,
+	PRIMARY KEY (cve_id)
 );
 
 -- Evidence-grounded, advisory analysis for one CVE. Never authoritative —

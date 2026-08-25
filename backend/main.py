@@ -13,24 +13,28 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 from sqlalchemy import or_, text
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from .config import settings
 from .database import SessionLocal, get_db, init_db
 from .fetch_cves import NVDRequestError, VulnerabilityValidationError, fetch_latest_cves, normalize_cve
+from .fetch_kev import KevRequestError
 from .logging_config import configure_logging
 from .models import AttackTechnique, Vulnerability
 from .schemas import (
     AttackTechniqueSchema,
     IntelligenceResponseSchema,
+    KevSyncResultSchema,
     SyncResultSchema,
     VulnerabilityPageSchema,
     VulnerabilitySchema,
+    VulnerabilityWithKevSchema,
 )
 from .security import RateLimitMiddleware, SecurityHeadersMiddleware, verify_api_key
 from .services.attack_service import seed_attack_catalog
 from .services.ingestion_service import synchronize_nvd
 from .services.intelligence_service import build_intelligence
+from .services.kev_service import synchronize_kev
 from .services.scheduler import NvdSyncScheduler
 
 
@@ -131,6 +135,19 @@ def sync_cves(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="NVD is unavailable.") from exc
 
 
+@app.post("/kev/sync", response_model=KevSyncResultSchema, dependencies=[Depends(verify_api_key)])
+def sync_kev(db: Session = Depends(get_db)) -> KevSyncResultSchema:
+    """Fetch, validate, and upsert the full CISA Known Exploited Vulnerabilities catalogue."""
+    try:
+        result = synchronize_kev(db)
+    except KevRequestError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="CISA KEV feed is unavailable.") from exc
+    return KevSyncResultSchema(
+        fetched=result.fetched, validated=result.validated, skipped=result.skipped,
+        created=result.created, updated=result.updated,
+    )
+
+
 @app.get("/cves", response_model=VulnerabilityPageSchema, dependencies=[Depends(verify_api_key)])
 def search_cves(
     severity: str | None = Query(default=None, max_length=20),
@@ -141,7 +158,7 @@ def search_cves(
     db: Session = Depends(get_db),
 ) -> VulnerabilityPageSchema:
     """Search local CVEs with database-side filtering and offset pagination."""
-    query = db.query(Vulnerability)
+    query = db.query(Vulnerability).options(joinedload(Vulnerability.kev))
     if severity:
         query = query.filter(Vulnerability.severity == severity.strip().upper())
     if min_cvss is not None:
@@ -165,29 +182,29 @@ def search_cves(
     )
 
 
-@app.get("/cves/{cve_id}", response_model=VulnerabilitySchema, dependencies=[Depends(verify_api_key)])
+@app.get("/cves/{cve_id}", response_model=VulnerabilityWithKevSchema, dependencies=[Depends(verify_api_key)])
 def get_cve(
     cve_id: str = ApiPath(pattern=CVE_ID_PATTERN), db: Session = Depends(get_db)
-) -> VulnerabilitySchema:
+) -> VulnerabilityWithKevSchema:
     vulnerability = _get_vulnerability_or_404(db, cve_id)
-    return VulnerabilitySchema.model_validate(vulnerability)
+    return VulnerabilityWithKevSchema.model_validate(vulnerability)
 
 
-@app.get("/vulnerabilities", response_model=list[VulnerabilitySchema], dependencies=[Depends(verify_api_key)])
+@app.get("/vulnerabilities", response_model=list[VulnerabilityWithKevSchema], dependencies=[Depends(verify_api_key)])
 def list_vulnerabilities(
     limit: int = Query(default=20, ge=1, le=100),
     severity: str | None = Query(default=None, max_length=20),
     db: Session = Depends(get_db),
-) -> list[VulnerabilitySchema]:
+) -> list[VulnerabilityWithKevSchema]:
     """Backward-compatible alias for the original local vulnerability list."""
     page = search_cves(severity=severity, min_cvss=None, q=None, limit=limit, offset=0, db=db)
     return page.items
 
 
-@app.get("/vulnerabilities/{cve_id}", response_model=VulnerabilitySchema, dependencies=[Depends(verify_api_key)])
+@app.get("/vulnerabilities/{cve_id}", response_model=VulnerabilityWithKevSchema, dependencies=[Depends(verify_api_key)])
 def get_vulnerability(
     cve_id: str = ApiPath(pattern=CVE_ID_PATTERN), db: Session = Depends(get_db)
-) -> VulnerabilitySchema:
+) -> VulnerabilityWithKevSchema:
     return get_cve(cve_id=cve_id, db=db)
 
 
@@ -236,7 +253,7 @@ def get_intelligence(
     return build_intelligence(db, _get_vulnerability_or_404(db, cve_id), refresh=refresh)
 
 
-def _validate_stored_records(items: list[Vulnerability]) -> list[VulnerabilitySchema]:
+def _validate_stored_records(items: list[Vulnerability]) -> list[VulnerabilityWithKevSchema]:
     """Validate stored rows the same way inbound NVD data is validated.
 
     A row already in the database is not automatically trustworthy forever:
@@ -247,10 +264,10 @@ def _validate_stored_records(items: list[Vulnerability]) -> list[VulnerabilitySc
     This mirrors the "skip and log, don't crash" discipline already applied
     to inbound NVD records in _extract_valid_records().
     """
-    validated: list[VulnerabilitySchema] = []
+    validated: list[VulnerabilityWithKevSchema] = []
     for item in items:
         try:
-            validated.append(VulnerabilitySchema.model_validate(item))
+            validated.append(VulnerabilityWithKevSchema.model_validate(item))
         except ValidationError:
             logger.warning("stored record %s failed response validation; omitted from results", item.cve_id)
     return validated

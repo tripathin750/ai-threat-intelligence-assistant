@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy import (
     JSON,
     Column,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -11,7 +12,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import foreign, relationship
 
 if __package__:
     from .database import Base
@@ -41,6 +42,17 @@ class Vulnerability(Base):
     )
     mitigations = relationship(
         "MitigationRecommendation", back_populates="vulnerability", uselist=False, cascade="all, delete-orphan"
+    )
+    # No real foreign key: KevEntry is CISA's own independent catalogue,
+    # synced separately from NVD and keyed by cve_id value alone - a CVE can
+    # appear in CISA KEV before this app has ever synced its NVD record (or
+    # not at all, if it predates this app's recent-window sync). viewonly
+    # because kev_entries is written only by services/kev_service.py.
+    kev = relationship(
+        "KevEntry",
+        primaryjoin="Vulnerability.cve_id == foreign(KevEntry.cve_id)",
+        uselist=False,
+        viewonly=True,
     )
 
 
@@ -108,6 +120,30 @@ class MitigationRecommendation(Base):
     generated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
     vulnerability = relationship("Vulnerability", back_populates="mitigations")
+
+
+class KevEntry(Base):
+    """One CISA Known Exploited Vulnerabilities (KEV) catalogue entry.
+
+    A second authoritative source alongside NVD, tracking real-world
+    exploitation independently of CVSS severity - synced in full each time
+    (services/kev_service.py) since CISA's feed is a single ~1,700-entry
+    JSON file with no incremental/windowed query support.
+    """
+
+    __tablename__ = "kev_entries"
+
+    cve_id = Column(String(30), primary_key=True)
+    vendor_project = Column(String(200), nullable=False)
+    product = Column(String(200), nullable=False)
+    vulnerability_name = Column(String(300), nullable=False)
+    date_added = Column(Date, nullable=False)
+    short_description = Column(Text, nullable=False)
+    required_action = Column(Text, nullable=False)
+    due_date = Column(Date, nullable=False)
+    known_ransomware_use = Column(String(20), nullable=False)
+    notes = Column(Text, nullable=True)
+    synced_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
 
 class SyncState(Base):

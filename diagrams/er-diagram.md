@@ -64,14 +64,30 @@ erDiagram
         int updated_records
     }
 
+    KEV_ENTRY {
+        string cve_id PK
+        string vendor_project
+        string product
+        string vulnerability_name
+        date date_added
+        text short_description
+        text required_action
+        date due_date
+        string known_ransomware_use
+        text notes
+        datetime synced_at
+    }
+
     VULNERABILITY ||--o| INTELLIGENCE_ANALYSIS : "has one (unique cve_id)"
     VULNERABILITY ||--o| MITIGATION_RECOMMENDATION : "has one (unique cve_id)"
     VULNERABILITY ||--o{ VULNERABILITY_ATTACK_MAPPING : "has many"
     ATTACK_TECHNIQUE ||--o{ VULNERABILITY_ATTACK_MAPPING : "mapped by"
+    VULNERABILITY |o..o| KEV_ENTRY : "joined by cve_id value (no FK)"
 ```
 
 **Notes:**
 - `INTELLIGENCE_ANALYSIS.cve_id` and `MITIGATION_RECOMMENDATION.cve_id` are each `UNIQUE` — a true one-to-one relationship enforced at the database level, not just assumed by the ORM (see [docs/Day21.md](../docs/Day21.md)).
 - `VULNERABILITY_ATTACK_MAPPING` has a composite `UNIQUE(cve_id, technique_id)` constraint, preventing the same technique from being mapped twice to one CVE.
 - All three child tables cascade-delete (`ondelete="CASCADE"`) when their parent `Vulnerability` row is removed — no orphaned advisory records can exist.
-- `SYNC_STATE` has no foreign key to `Vulnerability` — it tracks ingestion progress per source (`"NVD"`), independent of any specific CVE.
+- `SYNC_STATE` has no foreign key to `Vulnerability` — it tracks ingestion progress per source (`"NVD"` or `"CISA_KEV"`), independent of any specific CVE.
+- `KEV_ENTRY` is deliberately **not** a real foreign key to `VULNERABILITY` — CISA's Known Exploited Vulnerabilities catalogue is synced independently from NVD and can reference a `cve_id` this app hasn't ingested yet (or ever will, if it falls outside NVD's recent-modification window this app tracks). The join is by `cve_id` value only, via `Vulnerability.kev` (`primaryjoin`, `viewonly=True`) in `backend/models.py`.

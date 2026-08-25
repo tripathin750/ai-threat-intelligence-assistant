@@ -2,23 +2,25 @@
 
 **[Live dashboard](https://ai-threat-intelligence-assistant.onrender.com/dashboard/)** · **[Architecture reference](https://ai-threat-intelligence-assistant.onrender.com/architecture/)** — hosted free on Render; the first request after idle may take 10–60s to cold-start.
 
-An evidence-grounded vulnerability intelligence pipeline: it ingests CVEs from the National Vulnerability Database (NVD), normalizes and validates every record, stores them persistently, and layers advisory analysis, MITRE ATT&CK technique inference, and mitigation recommendations on top — all clearly labelled as advisory, with NVD remaining the authoritative source of vulnerability facts.
+An evidence-grounded vulnerability intelligence pipeline: it ingests CVEs from the National Vulnerability Database (NVD), normalizes and validates every record, stores them persistently, and layers advisory analysis, MITRE ATT&CK technique inference, and mitigation recommendations on top — all clearly labelled as advisory, with NVD (and, for real-world exploitation status, CISA's KEV catalogue) remaining the authoritative sources of fact.
 
 ```
-NVD API
-   │
-   ▼
-Ingestion Service  (fetch → normalize → validate → upsert)
-   │
-   ▼
-PostgreSQL / SQLite
+NVD API                    CISA KEV feed
+   │                            │
+   ▼                            ▼
+Ingestion Service          KEV sync
+(fetch → normalize →       (fetch → validate → upsert
+ validate → upsert)         the full catalogue)
+   │                            │
+   ▼                            ▼
+PostgreSQL / SQLite  ◄──────────┘  (joined by cve_id)
    │
    ├──► AI Analysis        (evidence-grounded summary, impact, risk)
    ├──► ATT&CK Inference    (signal-matched, explicitly labelled "inferred")
    └──► Mitigation Engine   (severity + technique-aware recommendations)
    │
    ▼
-FastAPI  (/cves, /intelligence/{cve_id}, /attack/techniques, ...)
+FastAPI  (/cves, /intelligence/{cve_id}, /attack/techniques, /kev/sync, ...)
    │
    ▼
 Static dashboard (/dashboard/)
@@ -142,8 +144,9 @@ Change the password/host/db name there if your local setup differs.
 | Endpoint | Purpose |
 |---|---|
 | `POST /cves/sync?limit=100` | Ingest new/changed CVEs from NVD (incremental) |
-| `GET /cves?severity=&min_cvss=&q=&limit=&offset=` | Search/filter/paginate stored CVEs |
-| `GET /cves/{cve_id}` | Fetch one stored CVE |
+| `GET /cves?severity=&min_cvss=&q=&limit=&offset=` | Search/filter/paginate stored CVEs (each result includes `kev` status if CISA has flagged it) |
+| `GET /cves/{cve_id}` | Fetch one stored CVE, with `kev` status if applicable |
+| `POST /kev/sync` | Refresh the full CISA Known Exploited Vulnerabilities catalogue |
 | `POST /intelligence/{cve_id}/analyze` | Generate/refresh the full intelligence view |
 | `GET /intelligence/{cve_id}` | Read the persisted intelligence view |
 | `GET /attack/techniques?q=` | Search the ATT&CK technique catalogue |

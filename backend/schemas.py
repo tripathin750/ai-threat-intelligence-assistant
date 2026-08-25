@@ -1,6 +1,6 @@
 """Pydantic schemas for validated API and service data."""
 
-from datetime import datetime
+from datetime import date, datetime
 import re
 from typing import Literal
 
@@ -114,10 +114,54 @@ class SyncResultSchema(BaseModel):
     updated: int = Field(ge=0)
 
 
+class KevSyncResultSchema(BaseModel):
+    """A validated summary of one CISA KEV catalogue synchronization."""
+
+    fetched: int = Field(ge=0)
+    validated: int = Field(ge=0)
+    skipped: int = Field(ge=0)
+    created: int = Field(ge=0)
+    updated: int = Field(ge=0)
+
+
+class KevEntrySchema(BaseModel):
+    """One CISA Known Exploited Vulnerabilities catalogue entry - a second,
+    independent authoritative source (real-world exploitation) alongside NVD
+    (vulnerability facts). Field names mirror CISA's own feed.
+    """
+
+    model_config = ConfigDict(from_attributes=True, extra="forbid", str_strip_whitespace=True)
+
+    cve_id: str = Field(pattern=CVE_ID_PATTERN.pattern)
+    vendor_project: str = Field(min_length=1)
+    product: str = Field(min_length=1)
+    vulnerability_name: str = Field(min_length=1)
+    date_added: date
+    short_description: str = Field(min_length=1)
+    required_action: str = Field(min_length=1)
+    due_date: date
+    known_ransomware_use: Literal["Known", "Unknown"]
+    notes: str | None = None
+
+    @field_validator("cve_id", mode="before")
+    @classmethod
+    def normalize_cve_id(cls, value: object) -> object:
+        return value.strip().upper() if isinstance(value, str) else value
+
+
+class VulnerabilityWithKevSchema(VulnerabilitySchema):
+    """VulnerabilitySchema plus CISA KEV status, for API responses only -
+    never used for NVD ingestion, so kev can never leak into a normalized
+    record written to the database (see fetch_cves.py's normalize_cve()).
+    """
+
+    kev: KevEntrySchema | None = None
+
+
 class VulnerabilityPageSchema(BaseModel):
     """A bounded database search result; clients should never load every CVE."""
 
-    items: list[VulnerabilitySchema]
+    items: list[VulnerabilityWithKevSchema]
     total: int = Field(ge=0)
     limit: int = Field(ge=1, le=100)
     offset: int = Field(ge=0)
@@ -170,7 +214,7 @@ class MitigationRecommendationSchema(BaseModel):
 class IntelligenceResponseSchema(BaseModel):
     """The combined, clearly sourced intelligence view for one CVE."""
 
-    cve: VulnerabilitySchema
+    cve: VulnerabilityWithKevSchema
     analysis: IntelligenceAnalysisSchema
     attack_mappings: list[AttackMappingSchema]
     mitigations: MitigationRecommendationSchema

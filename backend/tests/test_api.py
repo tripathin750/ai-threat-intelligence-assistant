@@ -10,6 +10,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 _TMP_DB = Path(tempfile.gettempdir()) / "threat_intelligence_test_api.db"
 _TMP_DB.unlink(missing_ok=True)
@@ -142,6 +143,34 @@ class ApiSmokeTests(unittest.TestCase):
         # A second, non-refreshing GET must return the persisted record.
         persisted = self.client.get("/intelligence/CVE-2026-60001").json()
         self.assertEqual(persisted["analysis"]["generated_at"], body["analysis"]["generated_at"])
+
+    def test_kev_sync_and_cve_responses_carry_kev_status(self) -> None:
+        kev_payload = {
+            "vulnerabilities": [
+                {
+                    "cveID": "CVE-2026-60001",  # matches the seeded vulnerability
+                    "vendorProject": "ExampleCorp",
+                    "product": "Example Product",
+                    "vulnerabilityName": "Example Vulnerability",
+                    "dateAdded": "2026-08-01",
+                    "shortDescription": "An example vulnerability.",
+                    "requiredAction": "Apply the vendor patch.",
+                    "dueDate": "2026-08-22",
+                    "knownRansomwareCampaignUse": "Known",
+                    "notes": "",
+                }
+            ]
+        }
+        with patch("backend.services.kev_service.fetch_kev_catalog", return_value=kev_payload):
+            sync_response = self.client.post("/kev/sync")
+        self.assertEqual(sync_response.status_code, 200)
+        self.assertEqual(sync_response.json()["created"], 1)
+
+        cve_response = self.client.get("/cves/CVE-2026-60001")
+        self.assertEqual(cve_response.status_code, 200)
+        kev = cve_response.json()["kev"]
+        self.assertIsNotNone(kev)
+        self.assertEqual(kev["known_ransomware_use"], "Known")
 
     def test_attack_technique_catalog_is_searchable(self) -> None:
         results = self.client.get("/attack/techniques", params={"q": "T1190"}).json()

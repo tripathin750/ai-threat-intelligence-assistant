@@ -24,6 +24,7 @@
           <input id="api-key-input" type="password" placeholder="X-API-Key" autocomplete="off" />
         </label>
         <button id="sync-button" class="button button-primary">Sync latest NVD CVEs</button>
+        <button id="sync-kev-button" class="button button-secondary" title="Refreshes CISA's Known Exploited Vulnerabilities catalogue — CVEs with confirmed real-world exploitation.">Sync CISA KEV</button>
       </div>
     </header>
 
@@ -76,6 +77,17 @@
           </div>
           <div id="intelligence-empty" class="empty-state">Choose a vulnerability to view or generate its intelligence record.</div>
           <div id="intelligence-content" hidden>
+            <section id="kev-section" hidden>
+              <h3>CISA Known Exploited Vulnerability</h3>
+              <p>This CVE has confirmed real-world exploitation, per CISA — a fact, not an inference.</p>
+              <dl class="kev-facts">
+                <div><dt>Vendor / Product</dt><dd id="kev-vendor-product"></dd></div>
+                <div><dt>Added to KEV</dt><dd id="kev-date-added"></dd></div>
+                <div><dt>Remediation due</dt><dd id="kev-due-date"></dd></div>
+                <div><dt>Required action</dt><dd id="kev-required-action"></dd></div>
+              </dl>
+              <div class="chips"><span id="kev-ransomware" class="badge"></span></div>
+            </section>
             <section>
               <h3>AI-assisted summary</h3>
               <ul id="analysis-summary"></ul>

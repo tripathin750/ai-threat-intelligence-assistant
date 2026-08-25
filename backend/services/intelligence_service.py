@@ -17,6 +17,7 @@ from ..schemas import (
     IntelligenceResponseSchema,
     MitigationRecommendationSchema,
     VulnerabilitySchema,
+    VulnerabilityWithKevSchema,
 )
 from .attack_service import InferredTechnique, infer_attack_techniques
 from .llm_service import generate_analysis
@@ -57,12 +58,13 @@ def build_intelligence(
             joinedload(Vulnerability.analysis),
             joinedload(Vulnerability.mitigations),
             joinedload(Vulnerability.mappings).joinedload(VulnerabilityAttackMapping.technique),
+            joinedload(Vulnerability.kev),
         )
         .filter(Vulnerability.cve_id == vulnerability.cve_id)
         .one()
     )
     return IntelligenceResponseSchema(
-        cve=VulnerabilitySchema.model_validate(hydrated),
+        cve=VulnerabilityWithKevSchema.model_validate(hydrated),
         analysis=IntelligenceAnalysisSchema.model_validate(hydrated.analysis),
         attack_mappings=[
             AttackMappingSchema(

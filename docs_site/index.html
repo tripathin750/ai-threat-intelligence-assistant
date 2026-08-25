@@ -302,7 +302,7 @@
       <span class="fact"><b>LLM</b> Google Gemini — optional, free tier</span>
       <span class="fact"><b>Frontend</b> Vanilla HTML/CSS/JS</span>
       <span class="fact"><b>Hosting</b> Render — free plan</span>
-      <span class="fact"><b>Tests</b> 55 passing, fully offline</span>
+      <span class="fact"><b>Tests</b> 69 passing, fully offline</span>
     </div>
   </div>
 
@@ -337,7 +337,7 @@
     <section id="overview">
       <div class="section-head"><span class="section-num">01</span><h2>Overview &amp; philosophy</h2></div>
       <p class="lede">The app ingests real, live CVE records from the National Vulnerability Database, then produces three kinds of advisory intelligence for each one: a plain-language analysis, an inferred MITRE ATT&amp;CK technique mapping, and a set of mitigation recommendations — all clearly separated from the one authoritative source.</p>
-      <p>One rule holds across every layer, enforced structurally rather than by convention: <strong>NVD is the only authoritative source of vulnerability facts.</strong> Everything the app generates — summaries, risk framing, ATT&amp;CK mappings, mitigations — is labelled advisory and evidence-grounded. Nothing generated is allowed to invent a fact NVD didn't supply; every generated schema traces back to a specific stored field. This shows up concretely in three places: the deterministic analyser's evidence list literally quotes the NVD fields it used, the LLM prompt is instructed the same way, and every API response carries a fixed disclaimer string.</p>
+      <p>One rule holds across every layer, enforced structurally rather than by convention: <strong>NVD (and, for real-world exploitation status, CISA's KEV catalogue) are the only authoritative sources of fact.</strong> Everything the app generates — summaries, risk framing, ATT&amp;CK mappings, mitigations — is labelled advisory and evidence-grounded. Nothing generated is allowed to invent a fact NVD didn't supply; every generated schema traces back to a specific stored field. This shows up concretely in three places: the deterministic analyser's evidence list literally quotes the NVD fields it used, the LLM prompt is instructed the same way, and every API response carries a fixed disclaimer string.</p>
       <div class="callout">
         <span class="tag">Design constant</span>
         A CVE's <code>severity</code> and <code>cvss_score</code> always come from NVD, never from the analysis layer — even when Gemini is active, its <code>risk</code> field is validated against the same enum NVD uses, but it is <em>advisory framing</em>, stored separately from the authoritative record.
@@ -350,6 +350,7 @@
         <table>
           <tr><th>Layer</th><th>Choice</th><th>Why</th></tr>
           <tr><td>Data source</td><td><code>NIST NVD CVE API 2.0</code></td><td>Live, authoritative, free, publicly rate-limited</td></tr>
+          <tr><td>Second data source</td><td>CISA Known Exploited Vulnerabilities (KEV) catalogue</td><td>Free, no API key, real-world exploitation status independent of CVSS severity — joined by <code>cve_id</code>, no foreign key</td></tr>
           <tr><td>Backend framework</td><td>FastAPI + Uvicorn (ASGI)</td><td>Async-friendly, typed request/response schemas via Pydantic</td></tr>
           <tr><td>Validation</td><td>Pydantic v2</td><td>Every external input — NVD records, LLM output — is schema-validated before it's trusted</td></tr>
           <tr><td>ORM</td><td>SQLAlchemy</td><td>Same model layer works against Postgres and SQLite</td></tr>
@@ -359,7 +360,7 @@
           <tr><td>Frontend</td><td>Vanilla HTML / CSS / JS</td><td>No build step, no framework — served as static files by the same FastAPI app</td></tr>
           <tr><td>Security middleware</td><td>Custom rate limiter, API-key gate, security headers, trusted-host + CORS</td><td>Hand-written, in <code>security.py</code></td></tr>
           <tr><td>Hosting</td><td>Render (free web service, via <code>render.yaml</code> Blueprint)</td><td>One-click deploy from the repo, zero cost</td></tr>
-          <tr><td>Testing</td><td>Python <code>unittest</code> + <code>httpx</code> (FastAPI TestClient)</td><td>55 tests, entirely offline — no API keys or network access required to run the suite</td></tr>
+          <tr><td>Testing</td><td>Python <code>unittest</code> + <code>httpx</code> (FastAPI TestClient)</td><td>69 tests, entirely offline — no API keys or network access required to run the suite</td></tr>
         </table>
       </div>
     </section>
@@ -494,15 +495,25 @@ erDiagram
         datetime last_attempted_sync
         int updated_records
     }
+    KEV_ENTRY {
+        string cve_id PK
+        string vendor_project
+        string product
+        date date_added
+        date due_date
+        string known_ransomware_use
+    }
     VULNERABILITY ||--o| INTELLIGENCE_ANALYSIS : "has one"
     VULNERABILITY ||--o| MITIGATION_RECOMMENDATION : "has one"
     VULNERABILITY ||--o{ VULNERABILITY_ATTACK_MAPPING : "has many"
     ATTACK_TECHNIQUE ||--o{ VULNERABILITY_ATTACK_MAPPING : "mapped by"
+    VULNERABILITY |o..o| KEV_ENTRY : "joined by cve_id (no FK)"
 </pre>
         </div>
         <figcaption><span class="fig-label">Fig. 2</span> <code>INTELLIGENCE_ANALYSIS.model</code> records which analyser actually produced the row — <code>gemini:gemini-3.5-flash-lite</code>, <code>evidence-based-rules-v1</code>, or the <code>…-fallback</code> variant when an LLM attempt failed mid-request.</figcaption>
       </figure>
       <p><code>VULNERABILITY_ATTACK_MAPPING.technique_id</code> is a real foreign key against <code>ATTACK_TECHNIQUE</code> — this is enforced at the database level, not just assumed, which matters for the LLM layer: a technique ID the model invents that isn't in the known catalogue would fail this constraint, so it's filtered out in application code before the insert is even attempted.</p>
+      <p><code>KEV_ENTRY</code> is the exception: it deliberately has <em>no</em> foreign key to <code>VULNERABILITY</code>. CISA's Known Exploited Vulnerabilities catalogue is synced independently from NVD (<code>services/kev_service.py</code>, refreshed in full each time — CISA's feed has no incremental query) and can reference a CVE this app hasn't ingested from NVD yet. The join is by <code>cve_id</code> value alone, via a <code>viewonly</code> SQLAlchemy relationship.</p>
     </section>
 
     <section id="request">
@@ -659,7 +670,7 @@ flowchart TD
 
     <section id="testing">
       <div class="section-head"><span class="section-num">13</span><h2>Testing philosophy</h2></div>
-      <p>55 tests, all offline — no real API key or network access needed to run the suite, including for the LLM layer, where <code>requests.post</code> is mocked directly rather than making a real Gemini call. One real bug this discipline caught: enabling Gemini in a developer's local <code>.env</code> for everyday use also flowed into the shared settings object the test suite imports, making one end-to-end test start hitting the real API and fail. Fixed by forcing <code>ENABLE_LLM_ANALYSIS=false</code> at test-module import time, the same pattern already used to force an isolated throwaway database.</p>
+      <p>69 tests, all offline — no real API key or network access needed to run the suite, including for the LLM layer, where <code>requests.post</code> is mocked directly rather than making a real Gemini call. One real bug this discipline caught: enabling Gemini in a developer's local <code>.env</code> for everyday use also flowed into the shared settings object the test suite imports, making one end-to-end test start hitting the real API and fail. Fixed by forcing <code>ENABLE_LLM_ANALYSIS=false</code> at test-module import time, the same pattern already used to force an isolated throwaway database.</p>
     </section>
 
     <section id="reference">

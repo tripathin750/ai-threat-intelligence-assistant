@@ -93,8 +93,16 @@ function renderCves(items) {
     button.addEventListener("click", () => loadIntelligence(cve.cve_id));
     const top = document.createElement("div"); top.className = "cve-card-top";
     const id = document.createElement("span"); id.className = "cve-id"; id.textContent = cve.cve_id;
+    const badges = document.createElement("span"); badges.className = "cve-badges";
     const severity = document.createElement("span"); severity.className = `badge badge-${cve.severity || "neutral"}`; severity.textContent = cve.severity || "UNSCORED";
-    top.append(id, severity);
+    badges.append(severity);
+    if (cve.kev) {
+      const kevBadge = document.createElement("span");
+      kevBadge.className = "badge badge-kev";
+      kevBadge.textContent = "KNOWN EXPLOITED";
+      badges.append(kevBadge);
+    }
+    top.append(id, badges);
     const description = document.createElement("p"); description.className = "description"; description.textContent = cve.description;
     button.append(top, description); list.append(button);
   }
@@ -124,9 +132,23 @@ function splitIntoPoints(text) {
     .filter(Boolean);
 }
 
+function renderKevSection(kev) {
+  const section = $("kev-section");
+  section.hidden = !kev;
+  if (!kev) return;
+  $("kev-vendor-product").textContent = `${kev.vendor_project} — ${kev.product}`;
+  $("kev-date-added").textContent = kev.date_added;
+  $("kev-due-date").textContent = kev.due_date;
+  $("kev-required-action").textContent = kev.required_action;
+  const ransomware = $("kev-ransomware");
+  ransomware.textContent = kev.known_ransomware_use === "Known" ? "Ransomware use: Known" : "Ransomware use: Unknown";
+  ransomware.className = `badge ${kev.known_ransomware_use === "Known" ? "badge-CRITICAL" : "badge-neutral"}`;
+}
+
 function renderIntelligence(data) {
   $("intelligence-empty").hidden = true;
   $("intelligence-content").hidden = false;
+  renderKevSection(data.cve.kev);
   const summary = $("analysis-summary"); summary.replaceChildren();
   for (const point of splitIntoPoints(data.analysis.summary)) {
     const item = document.createElement("li"); item.textContent = point; summary.append(item);
@@ -159,6 +181,17 @@ async function syncCves() {
     state.offset = 0;
     setStatus(`Sync complete: ${result.created} created, ${result.updated} updated, ${result.skipped} skipped.`);
     await loadCves();
+  } catch (error) { setStatus(error.message, true); }
+  finally { button.disabled = false; }
+}
+
+async function syncKev() {
+  const button = $("sync-kev-button"); button.disabled = true; setStatus("Synchronizing CISA Known Exploited Vulnerabilities…");
+  try {
+    const result = await api("/kev/sync", { method: "POST" });
+    setStatus(`CISA KEV sync complete: ${result.created} created, ${result.updated} updated, ${result.skipped} skipped.`);
+    await loadCves();
+    if (state.selectedId) await loadIntelligence(state.selectedId);
   } catch (error) { setStatus(error.message, true); }
   finally { button.disabled = false; }
 }
@@ -198,6 +231,7 @@ function initMatrixRain() {
 $("search-button").addEventListener("click", () => { state.offset = 0; loadCves(); });
 $("search-input").addEventListener("keydown", (event) => { if (event.key === "Enter") { state.offset = 0; loadCves(); } });
 $("sync-button").addEventListener("click", syncCves);
+$("sync-kev-button").addEventListener("click", syncKev);
 $("previous-button").addEventListener("click", () => { state.offset = Math.max(0, state.offset - state.limit); loadCves(); });
 $("next-button").addEventListener("click", () => { state.offset += state.limit; loadCves(); });
 initApiKeyField();
