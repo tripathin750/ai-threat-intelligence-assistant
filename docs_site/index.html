@@ -1,0 +1,724 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="System reference for the AI Threat Intelligence Assistant — architecture, ingestion pipeline, database schema, and the Gemini LLM analysis layer.">
+<title>Threat Intel Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg: #F3F5F6;
+    --panel: #E7ECEE;
+    --panel-strong: #DCE3E5;
+    --line: #D2D9DC;
+    --ink: #10181F;
+    --ink-muted: #55636F;
+    --accent: #0E7C86;
+    --accent-ink: #F3F5F6;
+    --critical: #B23A55;
+    --high: #B2621E;
+    --medium: #93791C;
+    --low: #2E6FB0;
+    --code-bg: #E3E9EB;
+    --shadow: rgba(16, 24, 31, 0.08);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0B1216;
+      --panel: #121C21;
+      --panel-strong: #172329;
+      --line: #223038;
+      --ink: #E7EDEF;
+      --ink-muted: #8FA0A8;
+      --accent: #3FC6CE;
+      --accent-ink: #04181A;
+      --critical: #FF7A93;
+      --high: #FFAE63;
+      --medium: #E8D25E;
+      --low: #78B4EE;
+      --code-bg: #101A1E;
+      --shadow: rgba(0, 0, 0, 0.35);
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.65 "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  }
+
+  ::selection { background: var(--accent); color: var(--accent-ink); }
+
+  h1, h2, h3, h4 { font-family: "Archivo", ui-sans-serif, system-ui, sans-serif; text-wrap: balance; line-height: 1.15; margin: 0; }
+  p, li { text-wrap: pretty; }
+  code, .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+
+  a { color: var(--accent); }
+
+  .layout {
+    max-width: 1320px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    gap: 48px;
+    padding: 0 28px 96px;
+  }
+
+  /* ---------- Hero ---------- */
+  .hero {
+    grid-column: 1 / -1;
+    padding: 64px 0 40px;
+    border-bottom: 1px solid var(--line);
+    display: grid;
+    gap: 18px;
+  }
+  .hero .eyebrow {
+    font: 700 12px/1 "IBM Plex Mono", monospace;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .hero h1 { font-size: clamp(2rem, 4vw, 3.2rem); font-weight: 800; letter-spacing: -0.01em; max-width: 20ch; }
+  .hero .dek { max-width: 62ch; color: var(--ink-muted); font-size: 1.08rem; }
+  .hero .facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 8px;
+  }
+  .fact {
+    font: 500 13px/1 "IBM Plex Mono", monospace;
+    padding: 7px 12px;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    color: var(--ink-muted);
+    background: var(--panel);
+  }
+  .fact b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- TOC rail ---------- */
+  nav.toc {
+    position: sticky;
+    top: 28px;
+    align-self: start;
+    max-height: calc(100vh - 56px);
+    overflow-y: auto;
+    padding-right: 8px;
+    padding-top: 40px;
+  }
+  nav.toc .toc-label {
+    font: 700 11px/1 "IBM Plex Mono", monospace;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    margin-bottom: 14px;
+    display: block;
+  }
+  nav.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; counter-reset: toc; }
+  nav.toc li { counter-increment: toc; }
+  nav.toc a {
+    display: flex;
+    gap: 10px;
+    padding: 7px 8px;
+    border-radius: 4px;
+    text-decoration: none;
+    color: var(--ink-muted);
+    font-size: 13.5px;
+    line-height: 1.3;
+  }
+  nav.toc a:hover { background: var(--panel); color: var(--ink); }
+  nav.toc a::before {
+    content: counter(toc, decimal-leading-zero);
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    color: var(--accent);
+    flex: none;
+    padding-top: 1px;
+  }
+  nav.toc .toc-sub { padding-left: 26px; font-size: 12.5px; }
+  nav.toc .toc-sub a::before { content: "–"; color: var(--line); }
+
+  /* ---------- Main content ---------- */
+  main { min-width: 0; padding-top: 40px; display: grid; gap: 6px; }
+
+  section { padding: 46px 0; border-bottom: 1px solid var(--line); max-width: 74ch; }
+  section:last-of-type { border-bottom: none; }
+
+  .section-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 18px; }
+  .section-num { font: 700 13px/1 "IBM Plex Mono", monospace; color: var(--accent); }
+  h2 { font-size: 1.7rem; font-weight: 700; }
+  h3 { font-size: 1.18rem; font-weight: 600; margin-top: 30px; margin-bottom: 10px; }
+  h4 { font-size: 1rem; font-weight: 600; color: var(--ink-muted); margin-top: 20px; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .04em; font-family: "IBM Plex Mono", monospace; font-size: .78rem; }
+
+  section > p, section > ul, section > ol { margin: 0 0 14px; }
+  ul, ol { padding-left: 22px; }
+  li { margin-bottom: 6px; }
+
+  .lede { font-size: 1.08rem; color: var(--ink-muted); }
+
+  code:not(.block) {
+    background: var(--code-bg);
+    padding: .1em .4em;
+    border-radius: 3px;
+    font-size: .88em;
+  }
+
+  pre.block {
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 16px 18px;
+    overflow-x: auto;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  /* ---------- Callouts ---------- */
+  .callout {
+    border-left: 3px solid var(--accent);
+    background: var(--panel);
+    padding: 14px 18px;
+    border-radius: 0 6px 6px 0;
+    margin: 18px 0;
+    font-size: .95rem;
+  }
+  .callout .tag {
+    font: 700 11px/1 "IBM Plex Mono", monospace;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: block;
+    margin-bottom: 6px;
+  }
+
+  /* ---------- Figures / diagrams ---------- */
+  figure {
+    margin: 24px 0;
+    max-width: 100%;
+  }
+  figure.wide { max-width: none; }
+  .exhibit {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel);
+    padding: 20px;
+    overflow-x: auto;
+  }
+  figcaption {
+    margin-top: 10px;
+    font-size: .85rem;
+    color: var(--ink-muted);
+    display: flex;
+    gap: 8px;
+  }
+  figcaption .fig-label {
+    font: 700 11px "IBM Plex Mono", monospace;
+    color: var(--accent);
+    flex: none;
+  }
+  pre.mermaid, .mermaid { background: transparent; margin: 0; display: flex; justify-content: center; }
+  .mermaid svg { max-width: 100%; height: auto; }
+
+  /* ---------- Tables ---------- */
+  .table-wrap { overflow-x: auto; margin: 18px 0; }
+  table { border-collapse: collapse; width: 100%; font-size: .92rem; }
+  th, td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font: 700 11px "IBM Plex Mono", monospace; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-muted); }
+  td code { white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+
+  /* ---------- Badges ---------- */
+  .badge { display: inline-block; font: 600 11px "IBM Plex Mono", monospace; padding: 2px 8px; border-radius: 999px; letter-spacing: .02em; }
+  .badge.critical { background: color-mix(in srgb, var(--critical) 18%, transparent); color: var(--critical); }
+  .badge.high { background: color-mix(in srgb, var(--high) 18%, transparent); color: var(--high); }
+  .badge.medium { background: color-mix(in srgb, var(--medium) 18%, transparent); color: var(--medium); }
+  .badge.low { background: color-mix(in srgb, var(--low) 18%, transparent); color: var(--low); }
+  .badge.free { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+  .badge.paid { background: color-mix(in srgb, var(--critical) 18%, transparent); color: var(--critical); }
+
+  /* ---------- Flow list (numbered mechanism steps) ---------- */
+  .flow { list-style: none; padding: 0; margin: 18px 0; display: grid; gap: 0; counter-reset: flow; }
+  .flow li {
+    counter-increment: flow;
+    position: relative;
+    padding: 4px 0 18px 40px;
+    border-left: 2px solid var(--line);
+    margin-left: 13px;
+  }
+  .flow li:last-child { border-left-color: transparent; padding-bottom: 0; }
+  .flow li::before {
+    content: counter(flow);
+    position: absolute;
+    left: -13px;
+    top: 2px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--bg);
+    border: 2px solid var(--accent);
+    color: var(--accent);
+    font: 700 12px/20px "IBM Plex Mono", monospace;
+    text-align: center;
+  }
+  .flow strong { color: var(--ink); }
+
+  /* ---------- footer ---------- */
+  footer {
+    grid-column: 1 / -1;
+    padding: 32px 0 8px;
+    color: var(--ink-muted);
+    font-size: .85rem;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    nav.toc { position: static; max-height: none; padding-top: 0; margin-bottom: 8px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <div class="hero">
+    <span class="eyebrow">System Reference — as built</span>
+    <h1>AI Threat Intelligence Assistant</h1>
+    <p class="dek">Every layer of the pipeline that turns a raw NVD CVE record into an evidence-labelled intelligence briefing — the ingestion path, the database, the optional Gemini analysis layer and its fallback contract, the frontend, and how it's deployed for free. Written from the code as it exists today.</p>
+    <div class="facts">
+      <span class="fact"><b>Backend</b> FastAPI · Python 3.12</span>
+      <span class="fact"><b>Database</b> PostgreSQL (Neon) / SQLite</span>
+      <span class="fact"><b>LLM</b> Google Gemini — optional, free tier</span>
+      <span class="fact"><b>Frontend</b> Vanilla HTML/CSS/JS</span>
+      <span class="fact"><b>Hosting</b> Render — free plan</span>
+      <span class="fact"><b>Tests</b> 55 passing, fully offline</span>
+    </div>
+  </div>
+
+  <nav class="toc">
+    <span class="toc-label">Contents</span>
+    <ol>
+      <li><a href="#overview">Overview &amp; philosophy</a></li>
+      <li><a href="#stack">Full tech stack</a></li>
+      <li><a href="#architecture">System architecture</a></li>
+      <li><a href="#ingestion">NVD ingestion pipeline</a></li>
+      <li><a href="#schema">Database schema</a></li>
+      <li><a href="#request">Anatomy of one request</a></li>
+      <li><a href="#llm">The LLM layer</a>
+        <ol class="toc-sub">
+          <li><a href="#llm-contract">Prompt &amp; JSON contract</a></li>
+          <li><a href="#llm-decision">Decision flow &amp; fallback</a></li>
+          <li><a href="#llm-cost">Why Gemini, and why free</a></li>
+        </ol>
+      </li>
+      <li><a href="#attack">ATT&amp;CK mapping</a></li>
+      <li><a href="#mitigations">Mitigation generation</a></li>
+      <li><a href="#frontend">Frontend</a></li>
+      <li><a href="#security">Security middleware</a></li>
+      <li><a href="#deploy">Deployment</a></li>
+      <li><a href="#testing">Testing philosophy</a></li>
+      <li><a href="#reference">Environment variable reference</a></li>
+    </ol>
+  </nav>
+
+  <main>
+
+    <section id="overview">
+      <div class="section-head"><span class="section-num">01</span><h2>Overview &amp; philosophy</h2></div>
+      <p class="lede">The app ingests real, live CVE records from the National Vulnerability Database, then produces three kinds of advisory intelligence for each one: a plain-language analysis, an inferred MITRE ATT&amp;CK technique mapping, and a set of mitigation recommendations — all clearly separated from the one authoritative source.</p>
+      <p>One rule holds across every layer, enforced structurally rather than by convention: <strong>NVD is the only authoritative source of vulnerability facts.</strong> Everything the app generates — summaries, risk framing, ATT&amp;CK mappings, mitigations — is labelled advisory and evidence-grounded. Nothing generated is allowed to invent a fact NVD didn't supply; every generated schema traces back to a specific stored field. This shows up concretely in three places: the deterministic analyser's evidence list literally quotes the NVD fields it used, the LLM prompt is instructed the same way, and every API response carries a fixed disclaimer string.</p>
+      <div class="callout">
+        <span class="tag">Design constant</span>
+        A CVE's <code>severity</code> and <code>cvss_score</code> always come from NVD, never from the analysis layer — even when Gemini is active, its <code>risk</code> field is validated against the same enum NVD uses, but it is <em>advisory framing</em>, stored separately from the authoritative record.
+      </div>
+    </section>
+
+    <section id="stack">
+      <div class="section-head"><span class="section-num">02</span><h2>Full tech stack</h2></div>
+      <div class="table-wrap">
+        <table>
+          <tr><th>Layer</th><th>Choice</th><th>Why</th></tr>
+          <tr><td>Data source</td><td><code>NIST NVD CVE API 2.0</code></td><td>Live, authoritative, free, publicly rate-limited</td></tr>
+          <tr><td>Backend framework</td><td>FastAPI + Uvicorn (ASGI)</td><td>Async-friendly, typed request/response schemas via Pydantic</td></tr>
+          <tr><td>Validation</td><td>Pydantic v2</td><td>Every external input — NVD records, LLM output — is schema-validated before it's trusted</td></tr>
+          <tr><td>ORM</td><td>SQLAlchemy</td><td>Same model layer works against Postgres and SQLite</td></tr>
+          <tr><td>Database</td><td>PostgreSQL (Neon, free tier) / SQLite (local default)</td><td>Zero-config local dev, real Postgres in production</td></tr>
+          <tr><td>LLM provider</td><td>Google Gemini (<code>gemini-3.5-flash-lite</code>)</td><td>Free tier is rate-limited, not credit-metered — see §7.3</td></tr>
+          <tr><td>HTTP client</td><td><code>requests</code></td><td>Already a dependency for the NVD client; no extra SDK needed for a single REST call</td></tr>
+          <tr><td>Frontend</td><td>Vanilla HTML / CSS / JS</td><td>No build step, no framework — served as static files by the same FastAPI app</td></tr>
+          <tr><td>Security middleware</td><td>Custom rate limiter, API-key gate, security headers, trusted-host + CORS</td><td>Hand-written, in <code>security.py</code></td></tr>
+          <tr><td>Hosting</td><td>Render (free web service, via <code>render.yaml</code> Blueprint)</td><td>One-click deploy from the repo, zero cost</td></tr>
+          <tr><td>Testing</td><td>Python <code>unittest</code> + <code>httpx</code> (FastAPI TestClient)</td><td>55 tests, entirely offline — no API keys or network access required to run the suite</td></tr>
+        </table>
+      </div>
+    </section>
+
+    <section id="architecture">
+      <div class="section-head"><span class="section-num">03</span><h2>System architecture</h2></div>
+      <p>The backend is organized as a pipeline: an ingestion service keeps the local database in sync with NVD, and an intelligence service turns any stored CVE into the three advisory outputs on demand — choosing between the LLM analyser and a deterministic fallback without the rest of the system needing to know which one ran.</p>
+      <figure class="wide">
+        <div class="exhibit">
+<pre class="mermaid">
+flowchart TB
+    NVD["NVD CVE API 2.0\n(external, live)"]
+    Gemini["Google Gemini API\n(external, optional, free tier)"]
+
+    subgraph Backend["FastAPI backend"]
+        direction TB
+        Ingest["Ingestion Service\nfetch → normalize → validate → upsert"]
+        Sched["Scheduler (optional)"]
+        DB[("PostgreSQL / SQLite")]
+        LLM["LLM Analyser (optional)\ngenerate_analysis()"]
+        AI["Deterministic Analyser\n(always-available fallback)"]
+        ATT["ATT&CK Inference\n(keyword fallback)"]
+        MIT["Mitigation Engine\n(rule-based fallback)"]
+        Intel["Intelligence Service\n(orchestrates + chooses LLM vs. fallback)"]
+        API["FastAPI routes"]
+        Sec["Security middleware\nrate limit · API key · headers"]
+    end
+
+    Dash["Dashboard (static, /dashboard/)"]
+    Client(["Browser / API client"])
+
+    NVD -->|"HTTPS GET, paginated"| Ingest
+    Sched -->|"on interval"| Ingest
+    Ingest -->|"upsert"| DB
+    DB --> Intel
+    Intel -->|"ENABLE_LLM_ANALYSIS=true\n+ GEMINI_API_KEY set"| LLM
+    LLM -->|"HTTPS, structured JSON"| Gemini
+    LLM -.->|"on any failure"| AI
+    Intel -->|"no key / disabled / LLM failed"| AI
+    LLM -->|"attack_techniques + mitigations"| Intel
+    AI --> Intel
+    Intel -->|"only if LLM did not run"| ATT
+    Intel -->|"only if LLM did not run"| MIT
+    ATT --> Intel
+    MIT --> Intel
+    Intel --> API
+    DB --> API
+    Sec -.->|"wraps every route"| API
+    API -->|"JSON"| Dash
+    API -->|"JSON"| Client
+    Dash --> Client
+</pre>
+        </div>
+        <figcaption><span class="fig-label">Fig. 1</span> The full pipeline. The LLM Analyser and Deterministic Analyser produce the same output shape — everything downstream is indifferent to which one ran.</figcaption>
+      </figure>
+    </section>
+
+    <section id="ingestion">
+      <div class="section-head"><span class="section-num">04</span><h2>NVD ingestion pipeline</h2></div>
+      <p><code>services/ingestion_service.py</code> keeps the local database in sync with NVD's "recently modified" window — this app deliberately does not mirror all ~280,000 CVEs since 1999; it tracks what changed recently, which is what a live CTI feed needs.</p>
+      <ol class="flow">
+        <li><strong>Fetch.</strong> <code>fetch_cves.py</code> calls the NVD CVE API 2.0 for records modified since the last successful sync (first run: last 24 hours, capped at 119 days by NVD's own API limits), paginating internally at 2,000 records per page.</li>
+        <li><strong>Normalize.</strong> Each raw NVD record is flattened — description text, the newest available CVSS version (v4.0 → v2, whichever exists), CWE classification, timestamps — into the shape the app stores.</li>
+        <li><strong>Validate.</strong> Every normalized record passes through <code>VulnerabilitySchema</code>. A record that fails validation is skipped and logged, never allowed to crash the whole sync or silently corrupt the database.</li>
+        <li><strong>Upsert.</strong> New CVE IDs are inserted; existing ones are updated in place (NVD frequently re-enriches old records with better CVSS/CWE data).</li>
+        <li><strong>Advance the cursor — carefully.</strong> <code>last_successful_sync</code> only moves forward when nothing was truncated by the request's <code>limit</code>. If NVD reported more modified records in the window than fit, the cursor holds so the next sync re-covers the same window instead of silently skipping the overflow forever.</li>
+      </ol>
+      <div class="callout">
+        <span class="tag">Bug found &amp; fixed this project</span>
+        Earlier, the cursor always advanced to "now" regardless of truncation — meaning a busy day at NVD could silently and permanently drop CVEs past whatever <code>limit</code> was set. Fixed alongside raising the default sync ceiling to 2,000 (NVD's own page-size maximum).
+      </div>
+    </section>
+
+    <section id="schema">
+      <div class="section-head"><span class="section-num">05</span><h2>Database schema</h2></div>
+      <p>One <code>vulnerabilities</code> table holds the authoritative NVD facts. Three child tables — each cascade-deleting with their parent — hold the advisory layer, kept structurally separate from the source of truth.</p>
+      <figure class="wide">
+        <div class="exhibit">
+<pre class="mermaid">
+erDiagram
+    VULNERABILITY {
+        string cve_id PK
+        text description
+        float cvss_score
+        string severity
+        string cwe_id
+        datetime published_date
+        datetime last_modified
+        string source
+    }
+    ATTACK_TECHNIQUE {
+        string technique_id PK
+        string name
+        text description
+        json tactics
+        string external_url
+    }
+    INTELLIGENCE_ANALYSIS {
+        int id PK
+        string cve_id FK
+        text summary
+        text impact
+        text affected_component
+        string risk
+        float confidence
+        json evidence
+        string model
+        datetime generated_at
+    }
+    MITIGATION_RECOMMENDATION {
+        int id PK
+        string cve_id FK
+        text immediate_action
+        text short_term
+        text long_term
+        json recommendations
+        string source
+        datetime generated_at
+    }
+    VULNERABILITY_ATTACK_MAPPING {
+        int id PK
+        string cve_id FK
+        string technique_id FK
+        string mapping_type "inferred | official"
+        float confidence
+        text rationale
+        datetime created_at
+    }
+    SYNC_STATE {
+        string source PK
+        datetime last_successful_sync
+        datetime last_attempted_sync
+        int updated_records
+    }
+    VULNERABILITY ||--o| INTELLIGENCE_ANALYSIS : "has one"
+    VULNERABILITY ||--o| MITIGATION_RECOMMENDATION : "has one"
+    VULNERABILITY ||--o{ VULNERABILITY_ATTACK_MAPPING : "has many"
+    ATTACK_TECHNIQUE ||--o{ VULNERABILITY_ATTACK_MAPPING : "mapped by"
+</pre>
+        </div>
+        <figcaption><span class="fig-label">Fig. 2</span> <code>INTELLIGENCE_ANALYSIS.model</code> records which analyser actually produced the row — <code>gemini:gemini-3.5-flash-lite</code>, <code>evidence-based-rules-v1</code>, or the <code>…-fallback</code> variant when an LLM attempt failed mid-request.</figcaption>
+      </figure>
+      <p><code>VULNERABILITY_ATTACK_MAPPING.technique_id</code> is a real foreign key against <code>ATTACK_TECHNIQUE</code> — this is enforced at the database level, not just assumed, which matters for the LLM layer: a technique ID the model invents that isn't in the known catalogue would fail this constraint, so it's filtered out in application code before the insert is even attempted.</p>
+    </section>
+
+    <section id="request">
+      <div class="section-head"><span class="section-num">06</span><h2>Anatomy of one request</h2></div>
+      <p>What actually happens between a click on a CVE card and the intelligence panel filling in — <code>POST /intelligence/{cve_id}/analyze</code>.</p>
+      <figure class="wide">
+        <div class="exhibit">
+<pre class="mermaid">
+sequenceDiagram
+    actor User as Client
+    participant API as FastAPI
+    participant Intel as intelligence_service
+    participant LLM as generate_analysis()
+    participant ATT as attack_service
+    participant MIT as mitigation_service
+    participant DB as Postgres/SQLite
+
+    User->>API: POST /intelligence/CVE-XXXX-YYYY/analyze
+    API->>DB: SELECT Vulnerability
+    API->>Intel: build_intelligence(refresh=true)
+    Intel->>LLM: generate_analysis(vulnerability)
+    Note over LLM: Gemini if enabled, else the<br/>deterministic analyser. Same<br/>AnalysisResult shape either way.
+    LLM-->>Intel: AnalysisResult
+    alt model starts with "gemini:"
+        Note over Intel: use the LLM's own attack_techniques<br/>and mitigations directly
+    else deterministic path ran
+        Intel->>ATT: infer_attack_techniques()
+        ATT-->>Intel: [InferredTechnique...]
+        Intel->>MIT: recommend_mitigations()
+        MIT-->>Intel: MitigationResult
+    end
+    Intel->>DB: upsert analysis + mappings + mitigations
+    Intel->>DB: COMMIT, re-query with joinedload
+    DB-->>Intel: hydrated record
+    Intel-->>API: IntelligenceResponseSchema
+    API-->>User: 200 OK
+</pre>
+        </div>
+        <figcaption><span class="fig-label">Fig. 3</span> Every branch converges on the same persisted shape — the dashboard never needs to know whether Gemini or the deterministic analyser produced it.</figcaption>
+      </figure>
+    </section>
+
+    <section id="llm">
+      <div class="section-head"><span class="section-num">07</span><h2>The LLM layer</h2></div>
+      <p class="lede">This is the part that actually generates the analytical content — and the part most carefully engineered to fail safely, since an external API is the least reliable thing in this whole pipeline.</p>
+
+      <h3 id="llm-contract">Prompt &amp; JSON contract</h3>
+      <p><code>services/prompts.py</code> defines the entire contract between the app and any model. The system prompt does three specific jobs:</p>
+      <ul>
+        <li><strong>Prompt-injection defence.</strong> The untrusted CVE description is placed inside an explicit <code>&lt;cve_record&gt;</code> block, with an explicit instruction that everything inside it is data, never an instruction to follow — even if it contains text that looks like a command or a role change.</li>
+        <li><strong>Evidence grounding.</strong> The model is told to use only the supplied fields, say so explicitly when a field is missing, and cite which field justifies every claim.</li>
+        <li><strong>A closed vocabulary for ATT&amp;CK.</strong> The 20-technique catalogue (see §8) is rendered into the prompt as the <em>only</em> set of technique IDs the model may choose from — it's told explicitly to leave the list empty rather than force a mapping.</li>
+      </ul>
+      <p>The model must respond with exactly this shape:</p>
+      <pre class="block"><code>{
+  "summary": string,              // real analysis: mechanism, attack vector, preconditions
+  "impact": string,
+  "affected_component": string,
+  "risk": "NONE"|"LOW"|"MEDIUM"|"HIGH"|"CRITICAL"|"UNKNOWN",
+  "confidence": number,           // 0–1
+  "evidence": [string, ...],      // each citing a specific &lt;cve_record&gt; field
+  "attack_techniques": [          // 0 or more, from the given catalogue only
+    { "technique_id": string, "rationale": string }
+  ],
+  "mitigations": [string, ...]    // 1–5, specific to this CVE's mechanism
+}</code></pre>
+      <p>That JSON is requested via Gemini's <code>responseSchema</code> structured-output mode, then re-validated independently with Pydantic's <code>LLMAnalysisOutputSchema</code> before anything touches the database — the same "never trust external input" rule this project applies to raw NVD records.</p>
+
+      <h3 id="llm-decision">Decision flow &amp; fallback</h3>
+      <p><code>llm_service.generate_analysis()</code> is the single function the rest of the app calls. It is designed so that a Gemini outage, rate limit, timeout, or malformed response never breaks a request — it just quietly produces the deterministic answer instead.</p>
+      <figure class="wide">
+        <div class="exhibit">
+<pre class="mermaid">
+flowchart TD
+    Start(["generate_analysis()"]) --> GateKey{"GEMINI_API_KEY set?"}
+    GateKey -- no --> Deterministic
+    GateKey -- yes --> GateEnable{"ENABLE_LLM_ANALYSIS=true?"}
+    GateEnable -- no --> Deterministic
+    GateEnable -- yes --> Call["POST generateContent\n~55s timeout, responseSchema"]
+    Call --> Ok{"200 OK in time?"}
+    Ok -- no --> LogWarn["log + fall back"]
+    Ok -- yes --> Parse{"valid JSON matching\nLLMAnalysisOutputSchema?"}
+    Parse -- no --> LogWarn
+    Parse -- yes --> Success["model = gemini:&lt;model&gt;"]
+    LogWarn --> Deterministic["analyse_vulnerability()\nmodel = evidence-based-rules-v1"]
+    Deterministic --> WasAttempt{"reached after a\nreal LLM attempt?"}
+    WasAttempt -- yes --> Labelled["relabel: …-fallback"]
+    WasAttempt -- no --> Plain["stays: evidence-based-rules-v1"]
+    Success --> Return(["return AnalysisResult"])
+    Labelled --> Return
+    Plain --> Return
+</pre>
+        </div>
+        <figcaption><span class="fig-label">Fig. 4</span> Two independent opt-in gates stand before any billable call — see §7.3. Every exit converges on a valid, storable result.</figcaption>
+      </figure>
+      <p>The single discriminator downstream code relies on is the returned <code>model</code> string. If it starts with <code>gemini:</code>, <code>intelligence_service.py</code> trusts the LLM's own ATT&amp;CK selections and mitigations — including an empty selection list, which is a confident "nothing matches" answer that must not be second-guessed by falling back to keyword matching. Any other value means the deterministic services ran, unchanged from before the LLM layer existed.</p>
+
+      <h3 id="llm-cost">Why Gemini, and why free</h3>
+      <p>Three providers were evaluated in this exact order, each ruled out for a concrete reason before landing on the current one:</p>
+      <div class="table-wrap">
+        <table>
+          <tr><th>Provider</th><th>Verdict</th><th>Why</th></tr>
+          <tr><td>Anthropic Claude</td><td><span class="badge paid">paid</span></td><td>No ongoing free tier — billed per token from the first request</td></tr>
+          <tr><td>Hugging Face Inference Providers</td><td><span class="badge paid">paid</span></td><td>A free account's entire monthly allowance is a $0.10 credit pool; the truly-free <code>hf-inference</code> tier "focuses mostly on CPU inference... smaller LLMs... like BERT or GPT-2" per HF's own pricing docs — modern 7B+ chat models route through paid third-party providers and exhaust the $0.10 in a handful of requests</td></tr>
+          <tr><td>Groq</td><td>Abandoned mid-setup</td><td>Genuinely free (rate-limited, not credit-metered) and hosts Qwen — but sign-in via GitHub OAuth hit a persistent <code>oauth_state_mismatch</code> browser/cookie issue that couldn't be resolved</td></tr>
+          <tr><td><strong>Google Gemini</strong></td><td><span class="badge free">free</span> — current</td><td>Same free-tier shape as Groq (rate limits, not credits), and sign-in is a plain Google account — no second-service OAuth handoff</td></tr>
+        </table>
+      </div>
+      <p>Two independent settings gate any real spend risk: <code>GEMINI_API_KEY</code> must be set <em>and</em> <code>ENABLE_LLM_ANALYSIS</code> must be explicitly <code>true</code>. Leaving either at its default — which is what a fresh clone of this repo does — keeps the entire project at zero cost, using only the deterministic analyser.</p>
+    </section>
+
+    <section id="attack">
+      <div class="section-head"><span class="section-num">08</span><h2>ATT&amp;CK mapping</h2></div>
+      <p>Both analysers map to the same 20-technique curated subset of the MITRE ATT&amp;CK Enterprise matrix (<code>data/attack_catalog.py</code>) — it started at 5 techniques with narrow keyword signals and was expanded specifically because coverage was too thin.</p>
+      <div class="table-wrap">
+        <table>
+          <tr><th>Path</th><th>Method</th><th>Coverage</th></tr>
+          <tr><td>Deterministic (fallback)</td><td>Exact keyword substring match against each technique's fixed signal list</td><td>Narrow — a CVE has to contain one of a handful of literal phrases</td></tr>
+          <tr><td>LLM (Gemini, when active)</td><td>Semantic selection from the same catalogue, given as reference text in the prompt</td><td>Much broader — understands paraphrase and context, not just exact substrings</td></tr>
+        </table>
+      </div>
+      <p>Neither path is allowed to invent a mapping without a genuine signal — both are instructed (one in code, one in the prompt) to return nothing rather than force a match, and every mapping is labelled <code>mapping_type: "inferred"</code>, explicitly never presented as an official MITRE assertion.</p>
+    </section>
+
+    <section id="mitigations">
+      <div class="section-head"><span class="section-num">09</span><h2>Mitigation generation</h2></div>
+      <p>The deterministic path (<code>mitigation_service.py</code>) always produces the same three boilerplate recommendations plus one technique-specific line when a mapping exists — reasonable, but repetitive across dissimilar CVEs. When the LLM path is active, its own 1–5 CVE-specific recommendations replace that list entirely (the severity-driven <code>immediate_action</code>/<code>short_term</code>/<code>long_term</code> narrative fields stay from the deterministic service either way, since those are legitimately generic process guidance).</p>
+    </section>
+
+    <section id="frontend">
+      <div class="section-head"><span class="section-num">10</span><h2>Frontend</h2></div>
+      <p>No framework, no build step — three static files (<code>index.html</code>, <code>app.js</code>, <code>styles.css</code>) mounted at <code>/dashboard</code> by the same FastAPI app. A few notable pieces:</p>
+      <ul>
+        <li>A green Matrix / glassmorphism visual theme — frosted-glass panels, a low-opacity animated digital-rain canvas background, JetBrains Mono.</li>
+        <li>The AI-assisted summary renders as bullet points (sentence-split client-side) rather than one dense paragraph.</li>
+        <li>An optional <code>X-API-Key</code> field, stored in <code>sessionStorage</code> only — never persisted long-term since it's a bearer credential.</li>
+      </ul>
+    </section>
+
+    <section id="security">
+      <div class="section-head"><span class="section-num">11</span><h2>Security middleware</h2></div>
+      <p><code>security.py</code> wraps every route with a hand-written rate limiter, an optional <code>X-API-Key</code> gate, and standard security headers; <code>TrustedHostMiddleware</code> and CORS are configured from environment variables so a real deployment must explicitly name its hostname rather than defaulting to a permissive wildcard.</p>
+    </section>
+
+    <section id="deploy">
+      <div class="section-head"><span class="section-num">12</span><h2>Deployment</h2></div>
+      <p>Render's free web-service plan runs the FastAPI app directly from <code>render.yaml</code> — a Blueprint deploy needs no manual server configuration. The Postgres database is Neon's free tier. Both free tiers have real constraints worth knowing:</p>
+      <ul>
+        <li>Render's free plan spins the service down after inactivity — the next request cold-starts it (10–60s).</li>
+        <li>Neon's free tier has storage/compute limits appropriate for this app's scope (recent-window CVE tracking, not a full historical mirror).</li>
+        <li>All secrets (<code>DATABASE_URL</code>, <code>GEMINI_API_KEY</code>) are marked <code>sync: false</code> in the Blueprint — never committed, set once in the Render dashboard.</li>
+      </ul>
+    </section>
+
+    <section id="testing">
+      <div class="section-head"><span class="section-num">13</span><h2>Testing philosophy</h2></div>
+      <p>55 tests, all offline — no real API key or network access needed to run the suite, including for the LLM layer, where <code>requests.post</code> is mocked directly rather than making a real Gemini call. One real bug this discipline caught: enabling Gemini in a developer's local <code>.env</code> for everyday use also flowed into the shared settings object the test suite imports, making one end-to-end test start hitting the real API and fail. Fixed by forcing <code>ENABLE_LLM_ANALYSIS=false</code> at test-module import time, the same pattern already used to force an isolated throwaway database.</p>
+    </section>
+
+    <section id="reference">
+      <div class="section-head"><span class="section-num">14</span><h2>Environment variable reference</h2></div>
+      <div class="table-wrap">
+        <table>
+          <tr><th>Variable</th><th>Default</th><th>Purpose</th></tr>
+          <tr><td><code>DATABASE_URL</code></td><td>local SQLite file</td><td>Postgres connection string in production; any <code>postgres(ql)://</code> scheme is auto-upgraded to the psycopg3 driver</td></tr>
+          <tr><td><code>API_KEY</code></td><td>unset (open)</td><td>Requires <code>X-API-Key</code> on protected endpoints when set</td></tr>
+          <tr><td><code>NVD_API_KEY</code></td><td>unset</td><td>Raises NVD's request-rate quota</td></tr>
+          <tr><td><code>GEMINI_API_KEY</code></td><td>unset</td><td>Enables the LLM path — needs <code>ENABLE_LLM_ANALYSIS=true</code> too</td></tr>
+          <tr><td><code>GEMINI_MODEL</code></td><td><code>gemini-3.5-flash-lite</code></td><td>Model catalogue shifts over time — check <code>ai.google.dev/gemini-api/docs/models</code></td></tr>
+          <tr><td><code>ENABLE_LLM_ANALYSIS</code></td><td><code>false</code></td><td>Second, independent opt-in gate for real Gemini calls</td></tr>
+          <tr><td><code>ALLOWED_ORIGINS</code> / <code>ALLOWED_HOSTS</code></td><td>localhost / <code>*</code></td><td>Must be set to the real hostname before any non-local deployment</td></tr>
+          <tr><td><code>RATE_LIMIT_PER_MINUTE</code></td><td><code>120</code></td><td>Per-client request ceiling enforced by <code>security.py</code></td></tr>
+          <tr><td><code>ENABLE_SCHEDULER</code> / <code>SYNC_INTERVAL_MINUTES</code></td><td><code>false</code> / <code>60</code></td><td>Optional periodic auto-sync against NVD</td></tr>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <span>AI Threat Intelligence Assistant — system reference</span>
+    <span>Author: Nitesh Tripathi</span>
+  </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+  var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  var lightVars = {
+    fontFamily: '"IBM Plex Mono", monospace',
+    primaryColor: '#E7ECEE', primaryTextColor: '#10181F', primaryBorderColor: '#0E7C86',
+    lineColor: '#55636F', secondaryColor: '#DCE3E5', tertiaryColor: '#F3F5F6',
+    background: '#F3F5F6', mainBkg: '#E7ECEE', nodeBorder: '#0E7C86',
+    clusterBkg: '#DCE3E5', clusterBorder: '#D2D9DC', edgeLabelBackground: '#F3F5F6',
+    textColor: '#10181F', actorBkg: '#E7ECEE', actorBorder: '#0E7C86', actorTextColor: '#10181F',
+    signalColor: '#55636F', signalTextColor: '#10181F', labelBoxBkgColor: '#E7ECEE',
+    labelBoxBorderColor: '#0E7C86', labelTextColor: '#10181F', noteBkgColor: '#DCE3E5',
+    noteBorderColor: '#0E7C86', noteTextColor: '#10181F'
+  };
+  var darkVars = {
+    fontFamily: '"IBM Plex Mono", monospace',
+    primaryColor: '#121C21', primaryTextColor: '#E7EDEF', primaryBorderColor: '#3FC6CE',
+    lineColor: '#8FA0A8', secondaryColor: '#172329', tertiaryColor: '#0B1216',
+    background: '#0B1216', mainBkg: '#121C21', nodeBorder: '#3FC6CE',
+    clusterBkg: '#172329', clusterBorder: '#223038', edgeLabelBackground: '#0B1216',
+    textColor: '#E7EDEF', actorBkg: '#121C21', actorBorder: '#3FC6CE', actorTextColor: '#E7EDEF',
+    signalColor: '#8FA0A8', signalTextColor: '#E7EDEF', labelBoxBkgColor: '#121C21',
+    labelBoxBorderColor: '#3FC6CE', labelTextColor: '#E7EDEF', noteBkgColor: '#172329',
+    noteBorderColor: '#3FC6CE', noteTextColor: '#E7EDEF'
+  };
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    themeVariables: prefersDark ? darkVars : lightVars,
+    securityLevel: 'strict'
+  });
+</script>
+</body>
+</html>

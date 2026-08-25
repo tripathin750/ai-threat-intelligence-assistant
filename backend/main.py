@@ -37,6 +37,7 @@ from .services.scheduler import NvdSyncScheduler
 configure_logging()
 logger = logging.getLogger(__name__)
 FRONTEND_DIR = Path(__file__).resolve().parents[1] / "frontend"
+DOCS_SITE_DIR = Path(__file__).resolve().parents[1] / "docs_site"
 CVE_ID_PATTERN = r"^CVE-\d{4}-\d{4,}$"
 
 
@@ -281,3 +282,4 @@ def _extract_valid_records(payload: dict[str, object]) -> tuple[list[dict[str, o
 
 
 app.mount("/dashboard", StaticFiles(directory=FRONTEND_DIR, html=True), name="dashboard")
+app.mount("/architecture", StaticFiles(directory=DOCS_SITE_DIR, html=True), name="architecture")
