@@ -1,5 +1,7 @@
 # AI-Based Threat Intelligence Assistant
 
+**[Live dashboard](https://ai-threat-intelligence-assistant.onrender.com/dashboard/)** · **[Architecture reference](https://ai-threat-intelligence-assistant.onrender.com/architecture/)** — hosted free on Render; the first request after idle may take 10–60s to cold-start.
+
 An evidence-grounded vulnerability intelligence pipeline: it ingests CVEs from the National Vulnerability Database (NVD), normalizes and validates every record, stores them persistently, and layers advisory analysis, MITRE ATT&CK technique inference, and mitigation recommendations on top — all clearly labelled as advisory, with NVD remaining the authoritative source of vulnerability facts.
 
 ```
