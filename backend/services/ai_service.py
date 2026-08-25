@@ -6,7 +6,7 @@ It is a safe seam for adding a separately reviewed LLM provider later; raw CVE
 text must always remain *data*, never instructions.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from ..schemas import VulnerabilitySchema
 
@@ -23,6 +23,13 @@ class AnalysisResult:
     confidence: float
     evidence: list[str]
     model: str = MODEL_NAME
+    # Populated only by the LLM path (services/llm_service.py); left empty
+    # here so intelligence_service.py can tell "the deterministic analyser
+    # ran, use the separate keyword/rule-based services" apart from "the LLM
+    # ran and confidently found nothing" (both look like an empty list, so
+    # the actual discriminator it uses is `model.startswith("gemini:")`).
+    attack_techniques: list[tuple[str, str]] = field(default_factory=list)
+    mitigations: list[str] = field(default_factory=list)
 
 
 def analyse_vulnerability(vulnerability: VulnerabilitySchema) -> AnalysisResult:

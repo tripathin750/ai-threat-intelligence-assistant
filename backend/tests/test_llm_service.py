@@ -52,6 +52,8 @@ VALID_MODEL_JSON = json.dumps(
         "risk": "CRITICAL",
         "confidence": 0.85,
         "evidence": ["NVD description: Example vulnerability description."],
+        "attack_techniques": [{"technique_id": "T1059", "rationale": "Description mentions command execution."}],
+        "mitigations": ["Validate and sanitize the affected input before use."],
     }
 )
 
@@ -67,6 +69,21 @@ class AnalyseWithLLMTests(unittest.TestCase):
         self.assertEqual(result.risk, "CRITICAL")
         self.assertEqual(result.confidence, 0.85)
         self.assertTrue(result.model.startswith("gemini:"))
+        self.assertEqual(result.attack_techniques, [("T1059", "Description mentions command execution.")])
+        self.assertEqual(result.mitigations, ["Validate and sanitize the affected input before use."])
+
+    def test_raises_when_mitigations_is_missing_or_empty(self) -> None:
+        # LLMAnalysisOutputSchema requires at least one mitigation - a
+        # response that omits the field (or sends an empty list) must be
+        # rejected the same way any other schema violation is.
+        missing = json.loads(VALID_MODEL_JSON)
+        del missing["mitigations"]
+        with patch.object(llm_service, "settings", _enabled_settings()):
+            with patch.object(
+                llm_service.requests, "post", return_value=_fake_gemini_response(json.dumps(missing))
+            ):
+                with self.assertRaises(LLMAnalysisError):
+                    analyse_with_llm(_vulnerability())
 
     def test_raises_when_the_response_is_not_valid_json(self) -> None:
         with patch.object(llm_service, "settings", _enabled_settings()):

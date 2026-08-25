@@ -52,6 +52,21 @@ class VulnerabilitySchema(BaseModel):
         return value.strip().upper() if isinstance(value, str) else value
 
 
+class AttackTechniqueSelectionSchema(BaseModel):
+    """One LLM-selected ATT&CK technique. technique_id is only pattern-
+    validated here (not checked against the known catalogue) - schemas.py
+    does not import the data layer, so services/intelligence_service.py is
+    responsible for filtering out any technique_id the LLM invents that
+    isn't in data/attack_catalog.py before it ever reaches the database
+    (VulnerabilityAttackMapping.technique_id is a foreign key against it).
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    technique_id: str = Field(pattern=r"^T\d{4}(?:\.\d{3})?$")
+    rationale: str = Field(min_length=1)
+
+
 class LLMAnalysisOutputSchema(BaseModel):
     """The exact JSON contract services/prompts.py's SYSTEM_PROMPT asks the
     model for. The provider's raw JSON response is validated against this
@@ -68,6 +83,13 @@ class LLMAnalysisOutputSchema(BaseModel):
     risk: str
     confidence: float = Field(ge=0, le=1)
     evidence: list[str] = Field(min_length=1)
+    # Zero or more: the model is instructed to leave this empty rather than
+    # force a mapping when the catalogue has no genuine match, mirroring the
+    # deterministic keyword matcher's "no signal, no mapping" rule.
+    attack_techniques: list[AttackTechniqueSelectionSchema] = Field(default_factory=list)
+    # At least one: unlike attack technique mappings, every analysis should
+    # produce at least one concrete, CVE-specific recommendation.
+    mitigations: list[str] = Field(min_length=1)
 
     @field_validator("risk", mode="before")
     @classmethod

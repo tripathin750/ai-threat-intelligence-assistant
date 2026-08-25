@@ -34,9 +34,11 @@ GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 # so 30s wasn't enough headroom - a real request timed out in production
 # with no other error. 55s stays under a plausible ~60s outer proxy limit.
 REQUEST_TIMEOUT_SECONDS = 55
-# Bounded on purpose: the JSON contract is a handful of short strings plus a
-# small evidence list, never a long free-form essay.
-MAX_OUTPUT_TOKENS = 1024
+# Bounded on purpose: a real summary/impact paragraph, a handful of evidence
+# citations, up to 5 mitigations, and a few attack-technique rationales -
+# still never a long free-form essay, but more than the original 1024 now
+# that the contract carries mitigations and attack_techniques too.
+MAX_OUTPUT_TOKENS = 2048
 
 # A hand-written subset of LLMAnalysisOutputSchema's shape, using only the
 # JSON Schema keywords Gemini's structured-output mode documents support
@@ -53,8 +55,23 @@ _GEMINI_RESPONSE_SCHEMA = {
         "risk": {"type": "string"},
         "confidence": {"type": "number"},
         "evidence": {"type": "array", "items": {"type": "string"}},
+        "attack_techniques": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "technique_id": {"type": "string"},
+                    "rationale": {"type": "string"},
+                },
+                "required": ["technique_id", "rationale"],
+            },
+        },
+        "mitigations": {"type": "array", "items": {"type": "string"}},
     },
-    "required": ["summary", "impact", "affected_component", "risk", "confidence", "evidence"],
+    "required": [
+        "summary", "impact", "affected_component", "risk", "confidence",
+        "evidence", "attack_techniques", "mitigations",
+    ],
 }
 
 
@@ -117,6 +134,8 @@ def analyse_with_llm(vulnerability: VulnerabilitySchema) -> AnalysisResult:
         confidence=parsed.confidence,
         evidence=parsed.evidence,
         model=f"gemini:{settings.gemini_model}",
+        attack_techniques=[(item.technique_id, item.rationale) for item in parsed.attack_techniques],
+        mitigations=parsed.mitigations,
     )
 
 
