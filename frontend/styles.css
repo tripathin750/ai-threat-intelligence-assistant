@@ -82,7 +82,7 @@ main { padding-bottom: 64px; }
 .search-panel { padding: 16px; display: grid; grid-template-columns: minmax(210px, 1fr) 160px 145px auto; gap: 12px; align-items: end; }
 
 label { display: grid; gap: 5px; color: var(--muted); font-size: .8rem; }
-input, select {
+input, select, textarea {
   background: rgba(2, 14, 8, .6);
   border: 1px solid var(--border);
   border-radius: 7px;
@@ -91,7 +91,8 @@ input, select {
   padding: 8px 10px;
   font: inherit;
 }
-input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; box-shadow: 0 0 14px rgba(57, 255, 20, .35); }
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; box-shadow: 0 0 14px rgba(57, 255, 20, .35); }
+textarea { min-height: 40px; font-family: inherit; resize: vertical; }
 
 .button { min-height: 40px; padding: 8px 14px; border: 0; border-radius: 7px; cursor: pointer; font: inherit; font-weight: 700; letter-spacing: .02em; transition: box-shadow .15s ease, background .15s ease, transform .1s ease; }
 .button-primary { background: linear-gradient(135deg, #39ff14, #12b357); color: #03170b; box-shadow: 0 0 16px rgba(57, 255, 20, .4); }
@@ -142,6 +143,19 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 .kev-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; margin: 10px 0 0; }
 .kev-facts dt { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 2px; }
 .kev-facts dd { margin: 0; font-size: .88rem; }
+
+.triage-panel { margin-bottom: 18px; padding: 16px 20px; }
+.triage-panel label { margin-bottom: 10px; }
+.triage-actions { display: flex; align-items: center; gap: 10px; margin: 4px 0 14px; flex-wrap: wrap; }
+.triage-results { overflow-x: auto; }
+.triage-table { width: 100%; border-collapse: collapse; font-size: .87rem; }
+.triage-table th { text-align: left; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-size: .72rem; padding: 6px 10px; border-bottom: 1px solid var(--border-strong); white-space: nowrap; }
+.triage-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.triage-row-not-found { opacity: .55; }
+.triage-cve-link { background: none; border: 0; color: var(--accent); font: inherit; font-weight: 800; cursor: pointer; padding: 0; text-decoration: underline; text-underline-offset: 3px; }
+.triage-cve-link:hover { color: #7bff5c; }
+.triage-copy-button { min-height: 30px; padding: 4px 10px; font-size: .78rem; }
+.badge-UNKNOWN, .badge-NOT_FOUND { background: rgba(127, 220, 156, .12); color: var(--muted); border-color: var(--border); }
 
 .stack { display: grid; gap: 8px; }
 .attack-item { background: rgba(2, 16, 9, .55); padding: 10px; border-radius: 7px; border-left: 3px solid var(--accent); box-shadow: inset 0 0 0 1px rgba(57, 255, 20, .08); }

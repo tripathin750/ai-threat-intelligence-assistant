@@ -26,6 +26,9 @@ from .schemas import (
     IntelligenceResponseSchema,
     KevSyncResultSchema,
     SyncResultSchema,
+    TriageBatchRequestSchema,
+    TriageBatchResponseSchema,
+    TriageRowSchema,
     VulnerabilityPageSchema,
     VulnerabilitySchema,
     VulnerabilityWithKevSchema,
@@ -36,6 +39,7 @@ from .services.ingestion_service import synchronize_nvd
 from .services.intelligence_service import build_intelligence
 from .services.kev_service import synchronize_kev
 from .services.scheduler import NvdSyncScheduler
+from .services.triage_service import triage_batch
 
 
 configure_logging()
@@ -251,6 +255,29 @@ def get_intelligence(
 ) -> IntelligenceResponseSchema:
     """Return the persisted intelligence view, creating one for a new CVE if needed."""
     return build_intelligence(db, _get_vulnerability_or_404(db, cve_id), refresh=refresh)
+
+
+@app.post(
+    "/triage/batch",
+    response_model=TriageBatchResponseSchema,
+    dependencies=[Depends(verify_api_key)],
+)
+def run_triage_batch(
+    payload: TriageBatchRequestSchema, db: Session = Depends(get_db)
+) -> TriageBatchResponseSchema:
+    """Sync-if-needed, analyse, and urgency-rank a pasted batch of CVE IDs.
+
+    Built for SOC triage: an analyst pastes a scanner export's CVE column
+    (up to 50 at a time) and gets back a worklist ranked by real urgency -
+    confirmed exploitation (CISA KEV) first, then CVSS severity - instead of
+    opening the single-CVE view 50 separate times.
+    """
+    result = triage_batch(db, payload.cve_ids)
+    return TriageBatchResponseSchema(
+        results=[TriageRowSchema.model_validate(row.__dict__) for row in result.rows],
+        requested=result.requested,
+        not_found=result.not_found,
+    )
 
 
 def _validate_stored_records(items: list[Vulnerability]) -> list[VulnerabilityWithKevSchema]:

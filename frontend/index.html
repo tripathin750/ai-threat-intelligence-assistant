@@ -25,12 +25,30 @@
         </label>
         <button id="sync-button" class="button button-primary">Sync latest NVD CVEs</button>
         <button id="sync-kev-button" class="button button-secondary" title="Refreshes CISA's Known Exploited Vulnerabilities catalogue — CVEs with confirmed real-world exploitation.">Sync CISA KEV</button>
+        <button id="triage-toggle-button" class="button button-secondary" aria-expanded="false" aria-controls="triage-panel" title="Paste a batch of CVE IDs from a scanner report and get a ranked, ticket-ready worklist.">Bulk Triage</button>
       </div>
     </header>
 
     <main>
       <section class="notice" aria-label="Analysis disclaimer">
         <strong>Evidence first:</strong> NVD provides the vulnerability facts. The generated analysis, ATT&amp;CK mappings, and mitigations are advisory and must be reviewed against vendor guidance.
+      </section>
+
+      <section id="triage-panel" class="panel triage-panel" aria-label="Bulk SOC triage" hidden>
+        <div class="panel-heading">
+          <h2>Bulk Triage</h2>
+          <span class="muted">Paste up to 50 CVE IDs — from a scanner export, an alert queue, anywhere</span>
+        </div>
+        <label>
+          CVE IDs (one per line, or comma/space separated)
+          <textarea id="triage-input" rows="4" placeholder="CVE-2026-12345, CVE-2026-23456&#10;CVE-2026-34567"></textarea>
+        </label>
+        <div class="triage-actions">
+          <button id="triage-run-button" class="button button-primary">Run triage</button>
+          <button id="triage-export-button" class="button button-secondary" disabled>Export CSV</button>
+          <span id="triage-status" class="muted"></span>
+        </div>
+        <div id="triage-results" class="triage-results"></div>
       </section>
 
       <section class="search-panel" aria-label="CVE search">

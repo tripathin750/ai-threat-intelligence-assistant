@@ -69,6 +69,26 @@ def fetch_latest_cves(limit: int = 5) -> dict[str, Any]:
     }
 
 
+def fetch_cve_by_id(cve_id: str) -> dict[str, Any] | None:
+    """Fetch one specific CVE record from NVD by its ID.
+
+    Used by the bulk triage workflow (services/triage_service.py) to pull in
+    a CVE an analyst pastes that this deployment has never synced locally.
+    Returns None when NVD has no record for the ID (a well-formed but unknown
+    or not-yet-published CVE) rather than raising, since "not found" is an
+    expected, non-fatal outcome for one row for one row of a batch.
+    """
+    headers: dict[str, str] = {}
+    api_key = os.getenv("NVD_API_KEY")
+    if api_key:
+        headers["apiKey"] = api_key
+    page = _request_nvd({"cveId": cve_id}, headers)
+    vulnerabilities = page.get("vulnerabilities", [])
+    if not isinstance(vulnerabilities, list) or not vulnerabilities:
+        return None
+    return page
+
+
 def fetch_modified_cves(
     modified_since: datetime | None, limit: int = 100
 ) -> dict[str, Any]:

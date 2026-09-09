@@ -196,6 +196,155 @@ async function syncKev() {
   finally { button.disabled = false; }
 }
 
+// --- Bulk Triage --------------------------------------------------------
+// Turns a pasted batch of CVE IDs (a scanner export, an overnight alert
+// queue) into a ranked SOC worklist via POST /triage/batch, instead of an
+// analyst opening the single-CVE view once per ID. See
+// backend/services/triage_service.py for the ranking rules.
+const triageState = { lastResults: [] };
+const URGENCY_LABEL = {
+  IMMEDIATE: "IMMEDIATE — KNOWN EXPLOITED",
+  CRITICAL: "CRITICAL", HIGH: "HIGH", MEDIUM: "MEDIUM", LOW: "LOW",
+  UNKNOWN: "UNSCORED", NOT_FOUND: "NOT FOUND",
+};
+
+function parseTriageIds(raw) {
+  const matches = raw.toUpperCase().match(/CVE-\d{4}-\d{4,}/g) || [];
+  return [...new Set(matches)];
+}
+
+async function runTriage() {
+  const ids = parseTriageIds($("triage-input").value);
+  const status = $("triage-status");
+  const runButton = $("triage-run-button");
+  if (!ids.length) { status.textContent = "Paste at least one CVE ID."; return; }
+  const capped = ids.slice(0, 50);
+  if (ids.length > 50) status.textContent = `Only the first 50 of ${ids.length} IDs were submitted.`;
+  else status.textContent = `Triaging ${capped.length} CVE${capped.length === 1 ? "" : "s"}…`;
+
+  runButton.disabled = true;
+  try {
+    const result = await api("/triage/batch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cve_ids: capped }),
+    });
+    triageState.lastResults = result.results;
+    renderTriageResults(result);
+    $("triage-export-button").disabled = result.results.length === 0;
+    status.textContent = `${result.requested - result.not_found} found, ${result.not_found} not found. Ranked by urgency.`;
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    runButton.disabled = false;
+  }
+}
+
+function renderTriageResults(result) {
+  const container = $("triage-results");
+  container.replaceChildren();
+  if (!result.results.length) return;
+
+  const table = document.createElement("table");
+  table.className = "triage-table";
+  const thead = document.createElement("thead");
+  thead.innerHTML = "<tr><th>Urgency</th><th>CVE</th><th>ATT&CK</th><th>Immediate action</th><th></th></tr>";
+  table.append(thead);
+  const tbody = document.createElement("tbody");
+
+  for (const row of result.results) {
+    const tr = document.createElement("tr");
+    tr.className = row.found ? "" : "triage-row-not-found";
+
+    const urgencyCell = document.createElement("td");
+    const badge = document.createElement("span");
+    badge.className = `badge badge-${row.urgency === "IMMEDIATE" ? "kev" : row.urgency}`;
+    badge.textContent = URGENCY_LABEL[row.urgency] || row.urgency;
+    urgencyCell.append(badge);
+
+    const cveCell = document.createElement("td");
+    if (row.found) {
+      const link = document.createElement("button");
+      link.type = "button";
+      link.className = "triage-cve-link";
+      link.textContent = row.cve_id;
+      link.addEventListener("click", () => loadIntelligence(row.cve_id));
+      cveCell.append(link);
+    } else {
+      cveCell.textContent = row.cve_id;
+      const note = document.createElement("span");
+      note.className = "secondary-text";
+      note.textContent = ` — ${row.note || "unavailable"}`;
+      cveCell.append(note);
+    }
+
+    const attackCell = document.createElement("td");
+    attackCell.textContent = row.top_technique || "—";
+
+    const actionCell = document.createElement("td");
+    actionCell.textContent = row.immediate_action || "—";
+
+    const copyCell = document.createElement("td");
+    if (row.found) {
+      const copyButton = document.createElement("button");
+      copyButton.type = "button";
+      copyButton.className = "button button-secondary triage-copy-button";
+      copyButton.textContent = "Copy note";
+      copyButton.addEventListener("click", () => copyTriageNote(row, copyButton));
+      copyCell.append(copyButton);
+    }
+
+    tr.append(urgencyCell, cveCell, attackCell, actionCell, copyCell);
+    tbody.append(tr);
+  }
+  table.append(tbody);
+  container.append(table);
+}
+
+// A clean, ticket-ready plain-text block — paste straight into Jira,
+// ServiceNow, or an incident note without reformatting.
+function formatTriageNote(row) {
+  const lines = [
+    `CVE: ${row.cve_id}`,
+    `Urgency: ${URGENCY_LABEL[row.urgency] || row.urgency}`,
+    `Severity: ${row.severity || "Unscored"}${row.cvss_score ? ` (CVSS ${row.cvss_score})` : ""}`,
+    `CISA KEV (confirmed exploited): ${row.kev ? "YES" : "No"}`,
+    `ATT&CK technique: ${row.top_technique || "None inferred"}`,
+    `Immediate action: ${row.immediate_action || "See full intelligence record."}`,
+  ];
+  if (row.summary) lines.push("", "Summary:", row.summary);
+  return lines.join("\n");
+}
+
+async function copyTriageNote(row, button) {
+  const text = formatTriageNote(row);
+  try {
+    await navigator.clipboard.writeText(text);
+    const original = button.textContent;
+    button.textContent = "Copied";
+    setTimeout(() => { button.textContent = original; }, 1500);
+  } catch {
+    $("triage-status").textContent = "Clipboard unavailable in this browser.";
+  }
+}
+
+function exportTriageCsv() {
+  if (!triageState.lastResults.length) return;
+  const header = ["cve_id", "urgency", "severity", "cvss_score", "kev", "top_technique", "immediate_action", "found"];
+  const escape = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+  const rows = triageState.lastResults.map((row) => header.map((key) => escape(row[key])).join(","));
+  const csv = [header.join(","), ...rows].join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `cve-triage-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 // Decorative digital-rain background for the Matrix theme. Skipped entirely
 // under prefers-reduced-motion, and cheap enough (one fillRect + column of
 // glyphs, ~16fps) not to compete with the actual dashboard for CPU.
@@ -232,6 +381,13 @@ $("search-button").addEventListener("click", () => { state.offset = 0; loadCves(
 $("search-input").addEventListener("keydown", (event) => { if (event.key === "Enter") { state.offset = 0; loadCves(); } });
 $("sync-button").addEventListener("click", syncCves);
 $("sync-kev-button").addEventListener("click", syncKev);
+$("triage-toggle-button").addEventListener("click", () => {
+  const panel = $("triage-panel");
+  panel.hidden = !panel.hidden;
+  $("triage-toggle-button").setAttribute("aria-expanded", String(!panel.hidden));
+});
+$("triage-run-button").addEventListener("click", runTriage);
+$("triage-export-button").addEventListener("click", exportTriageCsv);
 $("previous-button").addEventListener("click", () => { state.offset = Math.max(0, state.offset - state.limit); loadCves(); });
 $("next-button").addEventListener("click", () => { state.offset += state.limit; loadCves(); });
 initApiKeyField();

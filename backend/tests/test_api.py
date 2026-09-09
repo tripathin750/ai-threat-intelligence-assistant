@@ -172,6 +172,22 @@ class ApiSmokeTests(unittest.TestCase):
         self.assertIsNotNone(kev)
         self.assertEqual(kev["known_ransomware_use"], "Known")
 
+    def test_triage_batch_ranks_and_tolerates_an_unknown_cve(self) -> None:
+        with patch("backend.services.triage_service.fetch_cve_by_id", return_value=None):
+            response = self.client.post(
+                "/triage/batch", json={"cve_ids": ["CVE-2026-60001", "CVE-2099-99999"]}
+            )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["requested"], 2)
+        self.assertEqual(body["not_found"], 1)
+        results = {row["cve_id"]: row for row in body["results"]}
+        self.assertTrue(results["CVE-2026-60001"]["found"])
+        self.assertIn(results["CVE-2026-60001"]["urgency"], {"CRITICAL", "IMMEDIATE"})
+        self.assertFalse(results["CVE-2099-99999"]["found"])
+        # Found rows must always sort ahead of not-found rows.
+        self.assertEqual(body["results"][0]["cve_id"], "CVE-2026-60001")
+
     def test_attack_technique_catalog_is_searchable(self) -> None:
         results = self.client.get("/attack/techniques", params={"q": "T1190"}).json()
         self.assertTrue(any(item["technique_id"] == "T1190" for item in results))

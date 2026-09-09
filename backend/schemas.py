@@ -211,6 +211,48 @@ class MitigationRecommendationSchema(BaseModel):
     generated_at: datetime
 
 
+class TriageBatchRequestSchema(BaseModel):
+    """A pasted/uploaded batch of CVE IDs for services/triage_service.py.
+    Loose per-item validation on purpose - a mistyped or unknown ID is a
+    normal, expected row outcome (see TriageRowSchema.found), not a request
+    error, so this only bounds the batch size, not each ID's exact shape.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    cve_ids: list[str] = Field(min_length=1, max_length=50)
+
+
+class TriageRowSchema(BaseModel):
+    """One ranked row of a bulk triage result - a SOC analyst's worklist
+    entry, urgency-ranked from services/triage_service.py.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    cve_id: str
+    found: bool
+    severity: str | None = None
+    cvss_score: float | None = None
+    kev: bool = False
+    urgency: Literal["IMMEDIATE", "CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN", "NOT_FOUND"]
+    top_technique: str | None = None
+    immediate_action: str | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    summary: str | None = None
+    note: str | None = None
+
+
+class TriageBatchResponseSchema(BaseModel):
+    """The full ranked worklist for one bulk triage request."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    results: list[TriageRowSchema]
+    requested: int = Field(ge=0)
+    not_found: int = Field(ge=0)
+
+
 class IntelligenceResponseSchema(BaseModel):
     """The combined, clearly sourced intelligence view for one CVE."""
 
