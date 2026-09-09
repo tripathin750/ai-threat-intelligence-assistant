@@ -6,17 +6,21 @@ The end-to-end data pipeline, from external source to user interface.
 flowchart TB
     NVD["NVD CVE API 2.0\n(external, live)"]
     Gemini["Google Gemini API\n(external, optional, free tier)"]
+    KEVFeed["CISA KEV feed\n(external, single JSON file)"]
+    EPSSAPI["FIRST.org EPSS API\n(external, free, no auth)"]
 
     subgraph Backend["FastAPI backend (backend/)"]
         direction TB
         Ingest["Ingestion Service\nfetch → normalize → validate → upsert\n(services/ingestion_service.py, fetch_cves.py)"]
         Sched["Scheduler (optional)\nservices/scheduler.py"]
+        KevSvc["KEV Sync\nfetch → validate → bulk upsert\n(services/kev_service.py, fetch_kev.py)"]
         DB[("PostgreSQL / SQLite\nmodels.py")]
         LLM["LLM Analyser (optional)\nservices/llm_service.py\ngenerate_analysis()"]
         AI["Deterministic Analyser\nservices/ai_service.py\n(always-available fallback)"]
         ATT["ATT&CK Inference\nservices/attack_service.py\n(keyword fallback)"]
         MIT["Mitigation Engine\nservices/mitigation_service.py\n(rule-based fallback)"]
         Intel["Intelligence Service\nservices/intelligence_service.py\n(orchestrates + chooses LLM vs. fallback)"]
+        Triage["Bulk Triage\nservices/triage_service.py\nKEV + CVSS + EPSS fused ranking"]
         API["FastAPI routes\nmain.py"]
         Sec["Security middleware\nrate limit · API key · headers\nsecurity.py"]
     end
@@ -27,6 +31,8 @@ flowchart TB
     NVD -->|"HTTPS GET, paginated"| Ingest
     Sched -->|"on interval"| Ingest
     Ingest -->|"upsert"| DB
+    KEVFeed -->|"HTTPS GET, full refresh"| KevSvc
+    KevSvc -->|"bulk upsert"| DB
     DB --> Intel
     Intel -->|"ENABLE_LLM_ANALYSIS=true\n+ GEMINI_API_KEY set"| LLM
     LLM -->|"HTTPS, structured JSON"| Gemini
@@ -39,6 +45,10 @@ flowchart TB
     ATT --> Intel
     MIT --> Intel
     Intel --> API
+    DB --> Triage
+    Triage -->|"per-batch, live"| EPSSAPI
+    Triage -->|"reuses build_intelligence()"| Intel
+    Triage --> API
     DB --> API
     Sec -.->|"wraps every route"| API
     API -->|"JSON"| Dash

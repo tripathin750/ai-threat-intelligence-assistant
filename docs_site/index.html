@@ -328,6 +328,7 @@
       <li><a href="#security">Security middleware</a></li>
       <li><a href="#deploy">Deployment</a></li>
       <li><a href="#testing">Testing philosophy</a></li>
+      <li><a href="#triage">Bulk triage, EPSS &amp; cost impact</a></li>
       <li><a href="#reference">Environment variable reference</a></li>
     </ol>
   </nav>
@@ -360,7 +361,7 @@
           <tr><td>Frontend</td><td>Vanilla HTML / CSS / JS</td><td>No build step, no framework — served as static files by the same FastAPI app</td></tr>
           <tr><td>Security middleware</td><td>Custom rate limiter, API-key gate, security headers, trusted-host + CORS</td><td>Hand-written, in <code>security.py</code></td></tr>
           <tr><td>Hosting</td><td>Render (free web service, via <code>render.yaml</code> Blueprint)</td><td>One-click deploy from the repo, zero cost</td></tr>
-          <tr><td>Testing</td><td>Python <code>unittest</code> + <code>httpx</code> (FastAPI TestClient)</td><td>69 tests, entirely offline — no API keys or network access required to run the suite</td></tr>
+          <tr><td>Testing</td><td>Python <code>unittest</code> + <code>httpx</code> (FastAPI TestClient)</td><td>86 tests, entirely offline — no API keys or network access required to run the suite</td></tr>
         </table>
       </div>
     </section>
@@ -670,11 +671,30 @@ flowchart TD
 
     <section id="testing">
       <div class="section-head"><span class="section-num">13</span><h2>Testing philosophy</h2></div>
-      <p>69 tests, all offline — no real API key or network access needed to run the suite, including for the LLM layer, where <code>requests.post</code> is mocked directly rather than making a real Gemini call. One real bug this discipline caught: enabling Gemini in a developer's local <code>.env</code> for everyday use also flowed into the shared settings object the test suite imports, making one end-to-end test start hitting the real API and fail. Fixed by forcing <code>ENABLE_LLM_ANALYSIS=false</code> at test-module import time, the same pattern already used to force an isolated throwaway database.</p>
+      <p>86 tests, all offline — no real API key or network access needed to run the suite, including for the LLM layer, where <code>requests.post</code> is mocked directly rather than making a real Gemini call. One real bug this discipline caught: enabling Gemini in a developer's local <code>.env</code> for everyday use also flowed into the shared settings object the test suite imports, making one end-to-end test start hitting the real API and fail. Fixed by forcing <code>ENABLE_LLM_ANALYSIS=false</code> at test-module import time, the same pattern already used to force an isolated throwaway database.</p>
+    </section>
+
+    <section id="triage">
+      <div class="section-head"><span class="section-num">14</span><h2>Bulk triage, EPSS &amp; cost impact</h2></div>
+      <p class="lede">Three additions aimed at the actual unit of SOC work — a queue, not one CVE — and at making the pipeline's value legible in business terms, not just technical ones.</p>
+
+      <h3 id="triage-batch">Bulk triage (<code>services/triage_service.py</code>)</h3>
+      <p><code>POST /triage/batch</code> takes up to 50 pasted CVE IDs and returns a ranked worklist in one call, reusing the exact same <code>build_intelligence()</code> pipeline as the single-CVE view — no separate analysis engine. Any ID not already stored locally is fetched straight from NVD (<code>fetch_cve_by_id()</code>); a bad or unknown ID becomes a <code>not_found</code> row rather than failing the batch.</p>
+      <p>Rows are ranked by a three-signal fusion — the same one commercial Risk-Based Vulnerability Management platforms (Vulcan Cyber, Nucleus Security, Brinqa) sell as their core product:</p>
+      <ol>
+        <li><strong>CISA KEV</strong> — confirmed real-world exploitation, a fact. Always ranks first, regardless of CVSS.</li>
+        <li><strong>CVSS severity</strong> — NVD's own scoring, when KEV doesn't apply.</li>
+        <li><strong>EPSS</strong> (FIRST.org's free, no-auth API) — predicted probability of exploitation in the next 30 days. Breaks ties within the same severity band.</li>
+      </ol>
+      <p>EPSS scores are fetched live per batch (<code>fetch_epss.py</code>), never persisted — FIRST.org recomputes them daily, so a stored value goes stale immediately. A failed EPSS lookup degrades ranking to CVSS-only rather than failing the request.</p>
+      <p>Each row has a <strong>"Copy note"</strong> button that formats a clean, ticket-ready text block (severity, KEV status, EPSS, ATT&amp;CK technique, immediate action) for pasting straight into Jira/ServiceNow, plus a CSV export for the whole batch.</p>
+
+      <h3 id="triage-impact">Cost &amp; Time Impact panel</h3>
+      <p><code>GET /impact/summary</code> returns three aggregate counts — total CVEs tracked, how many have AI-generated intelligence, how many are CISA-confirmed exploited. The dashboard panel applies two <em>viewer-editable</em> assumptions client-side — minutes of manual research avoided per CVE, and a fully-loaded hourly analyst cost — to produce an estimated hours/cost saved. Deliberately not a fabricated organizational claim or a vendor quote: the methodology is fully visible and adjustable, the only thing asserted as fact is the underlying usage count.</p>
     </section>
 
     <section id="reference">
-      <div class="section-head"><span class="section-num">14</span><h2>Environment variable reference</h2></div>
+      <div class="section-head"><span class="section-num">15</span><h2>Environment variable reference</h2></div>
       <div class="table-wrap">
         <table>
           <tr><th>Variable</th><th>Default</th><th>Purpose</th></tr>
