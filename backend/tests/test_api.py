@@ -173,7 +173,10 @@ class ApiSmokeTests(unittest.TestCase):
         self.assertEqual(kev["known_ransomware_use"], "Known")
 
     def test_triage_batch_ranks_and_tolerates_an_unknown_cve(self) -> None:
-        with patch("backend.services.triage_service.fetch_cve_by_id", return_value=None):
+        with (
+            patch("backend.services.triage_service.fetch_cve_by_id", return_value=None),
+            patch("backend.services.triage_service.fetch_epss_scores", return_value={}),
+        ):
             response = self.client.post(
                 "/triage/batch", json={"cve_ids": ["CVE-2026-60001", "CVE-2099-99999"]}
             )
@@ -187,6 +190,15 @@ class ApiSmokeTests(unittest.TestCase):
         self.assertFalse(results["CVE-2099-99999"]["found"])
         # Found rows must always sort ahead of not-found rows.
         self.assertEqual(body["results"][0]["cve_id"], "CVE-2026-60001")
+
+    def test_impact_summary_reports_aggregate_counts(self) -> None:
+        response = self.client.post("/intelligence/CVE-2026-60001/analyze")
+        self.assertEqual(response.status_code, 200)
+
+        summary = self.client.get("/impact/summary").json()
+        self.assertGreaterEqual(summary["total_cves"], 1)
+        self.assertGreaterEqual(summary["analyzed_cves"], 1)
+        self.assertGreaterEqual(summary["kev_matches"], 0)
 
     def test_attack_technique_catalog_is_searchable(self) -> None:
         results = self.client.get("/attack/techniques", params={"q": "T1190"}).json()

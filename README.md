@@ -26,13 +26,17 @@ FastAPI  (/cves, /intelligence/{cve_id}, /attack/techniques, /kev/sync, /triage/
 Static dashboard (/dashboard/)
 ```
 
+## Cost & Time Impact — quantifying what automation actually saves
+
+The dashboard's **Cost & Time Impact** panel turns the pipeline's usage into a transparent estimate of analyst time and cost saved, instead of leaving that value implicit. It reads real counts from `GET /impact/summary` (CVEs tracked, how many have AI-generated intelligence, how many are CISA-confirmed exploited) and applies two *viewer-editable* assumptions — minutes of manual research avoided per CVE, and a fully-loaded hourly analyst cost — entirely client-side. Nothing here is a vendor quote or a fabricated organizational claim; the point is a defensible, adjustable methodology, not a number pretending to be more precise than it is.
+
 ## Bulk Triage — for SOC analysts working a queue, not one CVE
 
 A single-CVE view doesn't match how triage actually happens: an analyst gets a scanner export or an overnight alert queue with dozens of CVE IDs in it, not one at a time. **Bulk Triage** (the "Bulk Triage" button on the dashboard, or `POST /triage/batch`) takes up to 50 pasted CVE IDs and returns a ranked worklist in one call:
 
 - Syncs any CVE not already stored locally straight from NVD.
 - Runs the same evidence-grounded analysis/ATT&CK/mitigation pipeline as the single-CVE view.
-- Ranks by real urgency — **confirmed real-world exploitation (CISA KEV) outranks even a higher CVSS score with no confirmed exploitation**, then by severity.
+- Ranks by real urgency — **confirmed real-world exploitation (CISA KEV) outranks even a higher CVSS score with no confirmed exploitation**, then by severity, then by **EPSS** (FIRST.org's free, no-auth API predicting 30-day exploitation probability) as a tiebreaker within the same severity band — the same three-signal fusion (KEV + CVSS + EPSS) that commercial Risk-Based Vulnerability Management platforms sell as their core value proposition.
 - A bad/unknown ID never fails the batch — it's returned as a `not_found` row, everything else still triages.
 - Each row has a **"Copy note"** button that formats a clean, ticket-ready text block (severity, KEV status, ATT&CK technique, immediate action) for pasting straight into Jira/ServiceNow, plus a **CSV export** for the whole batch.
 
@@ -157,7 +161,8 @@ Change the password/host/db name there if your local setup differs.
 | `GET /cves?severity=&min_cvss=&q=&limit=&offset=` | Search/filter/paginate stored CVEs (each result includes `kev` status if CISA has flagged it) |
 | `GET /cves/{cve_id}` | Fetch one stored CVE, with `kev` status if applicable |
 | `POST /kev/sync` | Refresh the full CISA Known Exploited Vulnerabilities catalogue |
-| `POST /triage/batch` | Sync-if-needed, analyse, and urgency-rank up to 50 pasted CVE IDs (SOC bulk triage) |
+| `POST /triage/batch` | Sync-if-needed, analyse, and urgency-rank up to 50 pasted CVE IDs (SOC bulk triage, KEV+CVSS+EPSS fused) |
+| `GET /impact/summary` | Aggregate counts backing the Cost & Time Impact panel |
 | `POST /intelligence/{cve_id}/analyze` | Generate/refresh the full intelligence view |
 | `GET /intelligence/{cve_id}` | Read the persisted intelligence view |
 | `GET /attack/techniques?q=` | Search the ATT&CK technique catalogue |

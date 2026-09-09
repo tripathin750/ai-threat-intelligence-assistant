@@ -144,6 +144,17 @@ textarea { min-height: 40px; font-family: inherit; resize: vertical; }
 .kev-facts dt { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 2px; }
 .kev-facts dd { margin: 0; font-size: .88rem; }
 
+.impact-panel { margin-bottom: 18px; padding: 16px 20px; }
+.impact-stats { display: flex; gap: 28px; flex-wrap: wrap; margin: 10px 0 16px; }
+.impact-stat { display: flex; flex-direction: column; gap: 2px; }
+.impact-stat span:last-child { color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
+.impact-number { font-size: 1.7rem; font-weight: 800; color: var(--accent); text-shadow: 0 0 12px rgba(57, 255, 20, .35); }
+.impact-assumptions { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+.impact-assumptions label { width: 260px; }
+.impact-result { font-size: 1.05rem; margin-bottom: 6px; }
+.impact-result strong { color: var(--accent); }
+.impact-disclaimer { max-width: 70ch; }
+
 .triage-panel { margin-bottom: 18px; padding: 16px 20px; }
 .triage-panel label { margin-bottom: 10px; }
 .triage-actions { display: flex; align-items: center; gap: 10px; margin: 4px 0 14px; flex-wrap: wrap; }

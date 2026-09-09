@@ -11,7 +11,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
-from sqlalchemy import or_, text
+from sqlalchemy import func, or_, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 
@@ -20,9 +20,10 @@ from .database import SessionLocal, get_db, init_db
 from .fetch_cves import NVDRequestError, VulnerabilityValidationError, fetch_latest_cves, normalize_cve
 from .fetch_kev import KevRequestError
 from .logging_config import configure_logging
-from .models import AttackTechnique, Vulnerability
+from .models import AttackTechnique, IntelligenceAnalysis, KevEntry, Vulnerability
 from .schemas import (
     AttackTechniqueSchema,
+    ImpactSummarySchema,
     IntelligenceResponseSchema,
     KevSyncResultSchema,
     SyncResultSchema,
@@ -210,6 +211,20 @@ def get_vulnerability(
     cve_id: str = ApiPath(pattern=CVE_ID_PATTERN), db: Session = Depends(get_db)
 ) -> VulnerabilityWithKevSchema:
     return get_cve(cve_id=cve_id, db=db)
+
+
+@app.get("/impact/summary", response_model=ImpactSummarySchema, dependencies=[Depends(verify_api_key)])
+def get_impact_summary(db: Session = Depends(get_db)) -> ImpactSummarySchema:
+    """Aggregate counts for the dashboard's Cost & Time Impact panel.
+
+    Read-only and cheap (three COUNT queries) - the panel itself applies the
+    viewer's own time/cost assumptions to these counts client-side.
+    """
+    return ImpactSummarySchema(
+        total_cves=db.query(func.count(Vulnerability.cve_id)).scalar() or 0,
+        analyzed_cves=db.query(func.count(IntelligenceAnalysis.cve_id)).scalar() or 0,
+        kev_matches=db.query(func.count(KevEntry.cve_id)).scalar() or 0,
+    )
 
 
 @app.get("/attack/techniques", response_model=list[AttackTechniqueSchema], dependencies=[Depends(verify_api_key)])

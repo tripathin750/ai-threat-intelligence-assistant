@@ -117,6 +117,7 @@ async function loadIntelligence(cveId) {
     renderIntelligence(intelligence);
     setStatus("Intelligence record ready.");
     loadCves();
+    loadImpactSummary();
   } catch (error) {
     setStatus(error.message, true);
   }
@@ -181,6 +182,7 @@ async function syncCves() {
     state.offset = 0;
     setStatus(`Sync complete: ${result.created} created, ${result.updated} updated, ${result.skipped} skipped.`);
     await loadCves();
+    loadImpactSummary();
   } catch (error) { setStatus(error.message, true); }
   finally { button.disabled = false; }
 }
@@ -191,9 +193,40 @@ async function syncKev() {
     const result = await api("/kev/sync", { method: "POST" });
     setStatus(`CISA KEV sync complete: ${result.created} created, ${result.updated} updated, ${result.skipped} skipped.`);
     await loadCves();
+    loadImpactSummary();
     if (state.selectedId) await loadIntelligence(state.selectedId);
   } catch (error) { setStatus(error.message, true); }
   finally { button.disabled = false; }
+}
+
+// --- Cost & Time Impact ---------------------------------------------------
+// A transparent estimate, not a vendor claim: the counts come from the
+// backend (GET /impact/summary), but the time-per-CVE and hourly-cost
+// assumptions are editable by the viewer and applied entirely client-side,
+// so the figure always matches numbers a reader chose, never a fabricated
+// per-organization claim this project has no way to actually know.
+const impactState = { analyzedCves: 0 };
+
+async function loadImpactSummary() {
+  try {
+    const summary = await api("/impact/summary");
+    $("impact-total").textContent = summary.total_cves;
+    $("impact-analyzed").textContent = summary.analyzed_cves;
+    $("impact-kev").textContent = summary.kev_matches;
+    $("impact-methodology-count").textContent = summary.analyzed_cves;
+    impactState.analyzedCves = summary.analyzed_cves;
+    recomputeImpact();
+  } catch {
+    // Non-critical — the rest of the dashboard still works without this panel.
+  }
+}
+
+function recomputeImpact() {
+  const minutes = Math.max(0, Number($("impact-minutes-input").value) || 0);
+  const rate = Math.max(0, Number($("impact-rate-input").value) || 0);
+  const hours = (impactState.analyzedCves * minutes) / 60;
+  $("impact-hours").textContent = hours.toLocaleString(undefined, { maximumFractionDigits: 1 });
+  $("impact-cost").textContent = `£${(hours * rate).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 }
 
 // --- Bulk Triage --------------------------------------------------------
@@ -248,7 +281,7 @@ function renderTriageResults(result) {
   const table = document.createElement("table");
   table.className = "triage-table";
   const thead = document.createElement("thead");
-  thead.innerHTML = "<tr><th>Urgency</th><th>CVE</th><th>ATT&CK</th><th>Immediate action</th><th></th></tr>";
+  thead.innerHTML = "<tr><th>Urgency</th><th>CVE</th><th title=\"FIRST.org EPSS: predicted probability of exploitation in the next 30 days\">EPSS</th><th>ATT&CK</th><th>Immediate action</th><th></th></tr>";
   table.append(thead);
   const tbody = document.createElement("tbody");
 
@@ -278,6 +311,9 @@ function renderTriageResults(result) {
       cveCell.append(note);
     }
 
+    const epssCell = document.createElement("td");
+    epssCell.textContent = typeof row.epss_score === "number" ? `${(row.epss_score * 100).toFixed(1)}%` : "—";
+
     const attackCell = document.createElement("td");
     attackCell.textContent = row.top_technique || "—";
 
@@ -294,7 +330,7 @@ function renderTriageResults(result) {
       copyCell.append(copyButton);
     }
 
-    tr.append(urgencyCell, cveCell, attackCell, actionCell, copyCell);
+    tr.append(urgencyCell, cveCell, epssCell, attackCell, actionCell, copyCell);
     tbody.append(tr);
   }
   table.append(tbody);
@@ -309,6 +345,7 @@ function formatTriageNote(row) {
     `Urgency: ${URGENCY_LABEL[row.urgency] || row.urgency}`,
     `Severity: ${row.severity || "Unscored"}${row.cvss_score ? ` (CVSS ${row.cvss_score})` : ""}`,
     `CISA KEV (confirmed exploited): ${row.kev ? "YES" : "No"}`,
+    `EPSS (predicted 30-day exploitation probability): ${typeof row.epss_score === "number" ? `${(row.epss_score * 100).toFixed(1)}%` : "Unavailable"}`,
     `ATT&CK technique: ${row.top_technique || "None inferred"}`,
     `Immediate action: ${row.immediate_action || "See full intelligence record."}`,
   ];
@@ -330,7 +367,7 @@ async function copyTriageNote(row, button) {
 
 function exportTriageCsv() {
   if (!triageState.lastResults.length) return;
-  const header = ["cve_id", "urgency", "severity", "cvss_score", "kev", "top_technique", "immediate_action", "found"];
+  const header = ["cve_id", "urgency", "severity", "cvss_score", "epss_score", "kev", "top_technique", "immediate_action", "found"];
   const escape = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
   const rows = triageState.lastResults.map((row) => header.map((key) => escape(row[key])).join(","));
   const csv = [header.join(","), ...rows].join("\r\n");
@@ -388,8 +425,11 @@ $("triage-toggle-button").addEventListener("click", () => {
 });
 $("triage-run-button").addEventListener("click", runTriage);
 $("triage-export-button").addEventListener("click", exportTriageCsv);
+$("impact-minutes-input").addEventListener("input", recomputeImpact);
+$("impact-rate-input").addEventListener("input", recomputeImpact);
 $("previous-button").addEventListener("click", () => { state.offset = Math.max(0, state.offset - state.limit); loadCves(); });
 $("next-button").addEventListener("click", () => { state.offset += state.limit; loadCves(); });
 initApiKeyField();
 initMatrixRain();
 loadCves();
+loadImpactSummary();

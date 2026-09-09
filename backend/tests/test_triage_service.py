@@ -54,8 +54,14 @@ class TriageBatchTests(unittest.TestCase):
             intelligence_service, "generate_analysis", return_value=_analysis_result()
         )
         self._generate_analysis_patch.start()
+        # Default to "EPSS has no scores for this batch" so tests that don't
+        # care about EPSS ranking stay offline; individual tests override
+        # this with their own patch.object(...) to exercise EPSS ordering.
+        self._epss_patch = patch.object(triage_service, "fetch_epss_scores", return_value={})
+        self._epss_patch.start()
 
     def tearDown(self) -> None:
+        self._epss_patch.stop()
         self._generate_analysis_patch.stop()
         self.db.close()
         self.engine.dispose()
@@ -118,6 +124,45 @@ class TriageBatchTests(unittest.TestCase):
 
         self.assertEqual(result.requested, 1)
         self.assertEqual(len(result.rows), 1)
+
+    def test_epss_breaks_ties_within_the_same_urgency_tier(self) -> None:
+        self.db.add_all([
+            Vulnerability(
+                cve_id="CVE-2026-90006", description="A high severity issue, low predicted exploitation.",
+                cvss_score=8.5, severity="HIGH", source="NVD",
+            ),
+            Vulnerability(
+                cve_id="CVE-2026-90007", description="A high severity issue, high predicted exploitation.",
+                cvss_score=8.1, severity="HIGH", source="NVD",
+            ),
+        ])
+        self.db.commit()
+        self._epss_patch.stop()
+        with patch.object(
+            triage_service, "fetch_epss_scores",
+            return_value={"CVE-2026-90006": 0.02, "CVE-2026-90007": 0.87},
+        ):
+            result = triage_service.triage_batch(self.db, ["CVE-2026-90006", "CVE-2026-90007"])
+        self._epss_patch.start()
+
+        # Both rows are the same urgency tier (HIGH) and CVE-2026-90006 has
+        # the higher CVSS score, but CVE-2026-90007's far higher predicted
+        # exploitation probability must still put it first.
+        self.assertEqual([row.cve_id for row in result.rows], ["CVE-2026-90007", "CVE-2026-90006"])
+
+    def test_an_epss_lookup_failure_does_not_fail_the_batch(self) -> None:
+        self.db.add(Vulnerability(
+            cve_id="CVE-2026-90008", description="An issue.",
+            cvss_score=6.0, severity="MEDIUM", source="NVD",
+        ))
+        self.db.commit()
+        self._epss_patch.stop()
+        with patch.object(triage_service, "fetch_epss_scores", side_effect=triage_service.EpssRequestError("down")):
+            result = triage_service.triage_batch(self.db, ["CVE-2026-90008"])
+        self._epss_patch.start()
+
+        self.assertTrue(result.rows[0].found)
+        self.assertIsNone(result.rows[0].epss_score)
 
     def test_batch_is_capped_at_max_batch_size(self) -> None:
         ids = [f"CVE-2026-9{i:04d}" for i in range(triage_service.MAX_BATCH_SIZE + 10)]

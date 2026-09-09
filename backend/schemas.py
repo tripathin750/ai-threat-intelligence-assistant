@@ -236,6 +236,7 @@ class TriageRowSchema(BaseModel):
     cvss_score: float | None = None
     kev: bool = False
     urgency: Literal["IMMEDIATE", "CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN", "NOT_FOUND"]
+    epss_score: float | None = Field(default=None, ge=0, le=1)
     top_technique: str | None = None
     immediate_action: str | None = None
     confidence: float | None = Field(default=None, ge=0, le=1)
@@ -251,6 +252,22 @@ class TriageBatchResponseSchema(BaseModel):
     results: list[TriageRowSchema]
     requested: int = Field(ge=0)
     not_found: int = Field(ge=0)
+
+
+class ImpactSummarySchema(BaseModel):
+    """Aggregate counts backing the dashboard's Cost & Time Impact panel.
+
+    Deliberately just counts, not a pre-computed money figure - the actual
+    time-per-CVE and hourly-cost assumptions are edited by the viewer in the
+    frontend (frontend/app.js) and never asserted here as fact, since this
+    project does not know any real organization's actual analyst cost.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    total_cves: int = Field(ge=0)
+    analyzed_cves: int = Field(ge=0)
+    kev_matches: int = Field(ge=0)
 
 
 class IntelligenceResponseSchema(BaseModel):

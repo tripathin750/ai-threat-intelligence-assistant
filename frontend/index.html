@@ -34,6 +34,35 @@
         <strong>Evidence first:</strong> NVD provides the vulnerability facts. The generated analysis, ATT&amp;CK mappings, and mitigations are advisory and must be reviewed against vendor guidance.
       </section>
 
+      <section class="panel impact-panel" aria-label="Cost and time impact">
+        <div class="panel-heading">
+          <h2>Cost &amp; Time Impact</h2>
+          <span class="muted">Illustrative — adjust the assumptions to your own team</span>
+        </div>
+        <div class="impact-stats">
+          <div class="impact-stat"><span id="impact-total" class="impact-number">—</span><span>CVEs tracked</span></div>
+          <div class="impact-stat"><span id="impact-analyzed" class="impact-number">—</span><span>AI-analyzed automatically</span></div>
+          <div class="impact-stat"><span id="impact-kev" class="impact-number">—</span><span>confirmed exploited (KEV)</span></div>
+        </div>
+        <div class="impact-assumptions">
+          <label>
+            Minutes saved per CVE <span class="secondary-text">(manual NVD/ATT&amp;CK research avoided)</span>
+            <input id="impact-minutes-input" type="number" min="0" step="1" value="20" />
+          </label>
+          <label>
+            Hourly analyst cost (£) <span class="secondary-text">(fully-loaded)</span>
+            <input id="impact-rate-input" type="number" min="0" step="1" value="25" />
+          </label>
+        </div>
+        <p class="impact-result">
+          Estimated time saved: <strong id="impact-hours">0</strong> analyst hours —
+          estimated cost saved: <strong id="impact-cost">£0</strong>
+        </p>
+        <p class="secondary-text impact-disclaimer">
+          Based on <span id="impact-methodology-count">0</span> CVEs this deployment has already generated evidence-grounded intelligence for automatically, at the assumptions above. Not a vendor quote or audited figure — change the numbers to match your own team's actual time and cost.
+        </p>
+      </section>
+
       <section id="triage-panel" class="panel triage-panel" aria-label="Bulk SOC triage" hidden>
         <div class="panel-heading">
           <h2>Bulk Triage</h2>

@@ -20,6 +20,7 @@ import logging
 from sqlalchemy.orm import Session
 
 from ..fetch_cves import NVDRequestError, VulnerabilityValidationError, fetch_cve_by_id, normalize_cve
+from ..fetch_epss import EpssRequestError, fetch_epss_scores
 from ..models import Vulnerability
 from ..schemas import CVE_ID_PATTERN
 from .intelligence_service import build_intelligence
@@ -52,6 +53,7 @@ class TriageRow:
     cvss_score: float | None = None
     kev: bool = False
     urgency: str = "NOT_FOUND"
+    epss_score: float | None = None
     top_technique: str | None = None
     immediate_action: str | None = None
     confidence: float | None = None
@@ -116,6 +118,19 @@ def triage_batch(db: Session, raw_cve_ids: list[str]) -> TriageBatchResult:
     rows: list[TriageRow] = []
     not_found = 0
 
+    # Fetched once for the whole batch up front, independent of whether each
+    # ID is already stored locally - EPSS is FIRST.org's predicted
+    # probability of real-world exploitation in the next 30 days, the third
+    # signal (alongside CVSS severity and CISA KEV's confirmed-exploitation
+    # flag) that commercial risk-based vulnerability management platforms
+    # fuse to rank a queue. A failed lookup degrades ranking, not the batch:
+    # every row still gets analysed, just without the EPSS tiebreaker.
+    try:
+        epss_scores = fetch_epss_scores(cve_ids)
+    except EpssRequestError:
+        logger.warning("triage: EPSS lookup failed for this batch; ranking falls back to CVSS only")
+        epss_scores = {}
+
     for cve_id in cve_ids:
         if not CVE_ID_PATTERN.fullmatch(cve_id):
             rows.append(TriageRow(cve_id=cve_id, found=False, note="Not a valid CVE ID."))
@@ -140,6 +155,7 @@ def triage_batch(db: Session, raw_cve_ids: list[str]) -> TriageBatchResult:
                     cvss_score=intelligence.cve.cvss_score,
                     kev=intelligence.cve.kev is not None,
                     urgency=_urgency_for(intelligence.cve.severity, intelligence.cve.kev is not None),
+                    epss_score=epss_scores.get(cve_id),
                     top_technique=(
                         f"{top_mapping.technique.technique_id} — {top_mapping.technique.name}"
                         if top_mapping
@@ -155,5 +171,10 @@ def triage_batch(db: Session, raw_cve_ids: list[str]) -> TriageBatchResult:
             rows.append(TriageRow(cve_id=cve_id, found=False, note="Analysis failed; try again."))
             not_found += 1
 
-    rows.sort(key=lambda row: (_URGENCY_RANK.get(row.urgency, 9), -(row.cvss_score or 0)))
+    # Within the same urgency tier, EPSS (a predicted exploitation
+    # probability) breaks ties before CVSS (a static severity score) -
+    # confirmed exploitation (KEV, a fact) still always outranks both.
+    rows.sort(
+        key=lambda row: (_URGENCY_RANK.get(row.urgency, 9), -(row.epss_score or 0), -(row.cvss_score or 0))
+    )
     return TriageBatchResult(rows=rows, requested=len(cve_ids), not_found=not_found)
