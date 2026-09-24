@@ -37,6 +37,7 @@ Every CVE carries a CWE (the weakness class). The dashboard's **Fault tree** pan
 - **Grounded in MITRE's own record.** The CWE's description, common consequences and potential mitigations are fetched live from MITRE's CWE REST API and handed to the model as a delimited data block, never as instructions.
 - **Works for any CWE.** When `ENABLE_LLM_ANALYSIS` and `GEMINI_API_KEY` are both set, Gemini drafts the tree; otherwise (or on any failure) a deterministic template built from the same MITRE record is used. The `source` field says which produced it.
 - **Validated, not trusted.** The response must be a real tree: unique ids, no cycles or shared children, gates with at least two children, bounded depth and size. Anything else is discarded in favour of the template.
+- **A real diagram.** The dashboard draws standard FTA notation in SVG: rectangles for events, circles for basic events, and AND / OR gate symbols, with a text outline underneath for accessibility.
 - **Advisory.** Trees are analytical aids, not authoritative facts; each response carries a disclaimer. Results are cached per CWE.
 
 ## Bulk Triage — for SOC analysts working a queue, not one CVE

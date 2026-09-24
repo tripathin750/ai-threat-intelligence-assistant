@@ -118,9 +118,9 @@ def build_template_tree(record: CweRecordSchema) -> FaultTreeSchema:
     """A deterministic tree built only from MITRE's record.
 
     Exploitation needs three things at once (AND): the weakness is present,
-    an attacker can reach it, and no effective control stops it - and that
-    last one only holds if every relevant control is absent (a nested AND
-    over the record's own listed mitigations).
+    an attacker can reach it (OR: any one route suffices), and no effective
+    control stops it - which only holds if every relevant control is absent
+    (a nested AND over the record's own listed mitigations).
     """
     impacts: list[str] = []
     for item in record.consequences:
@@ -129,9 +129,11 @@ def build_template_tree(record: CweRecordSchema) -> FaultTreeSchema:
                 impact = impact.strip()
                 if impact and impact not in impacts:
                     impacts.append(impact)
-    top = f"{record.cwe_id} ({record.name}) is exploited"
+    # Short on purpose: the diagram box holds ~3 lines; the full name is
+    # already shown next to the diagram.
+    top = f"{record.cwe_id} is exploited"
     if impacts:
-        top += f", leading to: {', '.join(impacts[:3])}"
+        top += f", leading to: {', '.join(impacts[:2])}"
 
     controls = []
     for item in record.mitigations:
@@ -157,10 +159,14 @@ def build_template_tree(record: CweRecordSchema) -> FaultTreeSchema:
     nodes = [
         {"id": "n1", "label": _label(top), "gate": "AND", "children": ["n2", "n3", "n4"]},
         {"id": "n2", "label": _label(f"Code or configuration exhibiting the weakness is present: {record.name}"), "gate": "NONE", "children": []},
-        {"id": "n3", "label": "An attacker can supply or influence the data or conditions that reach the weak code path", "gate": "NONE", "children": []},
+        {"id": "n3", "label": "An attacker can influence the data or conditions reaching the weak code path", "gate": "OR", "children": ["r1", "r2"]},
         {"id": "n4", "label": "No effective control stands between the attacker and the weakness", "gate": "AND",
          "children": [f"c{i}" for i in range(1, len(controls) + 1)]},
     ]
+    nodes.extend([
+        {"id": "r1", "label": "Through an externally reachable interface or input channel", "gate": "NONE", "children": []},
+        {"id": "r2", "label": "Through data from an untrusted or compromised upstream source", "gate": "NONE", "children": []},
+    ])
     nodes.extend(
         {"id": f"c{i}", "label": label, "gate": "NONE", "children": []}
         for i, label in enumerate(controls, start=1)

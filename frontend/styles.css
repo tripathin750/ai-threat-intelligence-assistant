@@ -178,6 +178,22 @@ textarea { min-height: 40px; font-family: inherit; resize: vertical; }
 }
 #kev-section h3 { color: var(--critical); }
 #kev-section p { color: #ffd3dc; font-size: .88rem; }
+.ft-diagram { margin-top: 10px; overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; background: rgba(0, 8, 4, .55); padding: 8px; }
+.ft-diagram .ft-svg { display: block; width: 100%; height: auto; }
+.ft-diagram.ft-actual-size .ft-svg { width: auto; max-width: none; }
+.ft-svg text { fill: var(--text); font: 11px "JetBrains Mono", ui-monospace, Consolas, monospace; }
+.ft-svg-lines line { stroke: var(--accent-soft); stroke-width: 1.5; }
+.ft-svg-event rect { fill: #06261a; stroke: var(--accent); stroke-width: 1.5; }
+.ft-svg-basic rect { fill: #04150d; stroke: var(--border-strong); stroke-width: 1; stroke-dasharray: 4 3; }
+.ft-svg-basic circle { fill: #04150d; stroke: var(--accent); stroke-width: 1.5; }
+.ft-svg-gate path { stroke-width: 2; }
+.ft-svg-gate text { font-weight: 700; font-size: 10px; }
+.ft-svg-gate-AND path { fill: rgba(255, 159, 67, .14); stroke: var(--high); }
+.ft-svg-gate-AND text { fill: var(--high); }
+.ft-svg-gate-OR path { fill: rgba(77, 201, 255, .14); stroke: var(--low); }
+.ft-svg-gate-OR text { fill: var(--low); }
+.ft-svg-legend text { fill: var(--muted); }
+.ft-outline { margin-top: 10px; }
 .ft-tree, .ft-tree ul { list-style: none; margin: 0; padding-left: 0; }
 .ft-tree ul { margin-left: 12px; padding-left: 16px; border-left: 1px solid var(--border-strong); }
 .ft-tree li { margin: 8px 0; }
