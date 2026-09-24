@@ -494,6 +494,42 @@ $("impact-rate-input").addEventListener("input", recomputeImpact);
 $("previous-button").addEventListener("click", () => { state.offset = Math.max(0, state.offset - state.limit); loadCves(); });
 $("next-button").addEventListener("click", () => { state.offset += state.limit; loadCves(); });
 initApiKeyField();
+initGlitchTitle();
 initMatrixRain();
 loadCves();
 loadImpactSummary();
+
+
+// Title effect: the heading "decrypts" from random matrix glyphs on load and
+// re-scrambles briefly every few seconds. The real text stays the accessible
+// name (aria-label); the scrambled frames are decoration only.
+function initGlitchTitle() {
+  const title = $("site-title");
+  if (!title) return;
+  const finalText = title.dataset.text;
+  title.setAttribute("aria-label", finalText);
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const glyphs = "01ABCDEF<>/|{}[]#$%&*+=";  // single-width only: wide glyphs would reflow the title
+  const textNode = document.createElement("span");
+  const cursor = document.createElement("span");
+  cursor.className = "cursor"; cursor.textContent = " ";
+  title.replaceChildren(textNode, cursor);
+  let timer = null;
+  function decode(duration = 1100) {
+    clearInterval(timer);
+    const start = performance.now();
+    timer = setInterval(() => {
+      const progress = Math.min(1, (performance.now() - start) / duration);
+      const settled = Math.floor(progress * finalText.length);
+      let out = "";
+      for (let i = 0; i < finalText.length; i++) {
+        out += i < settled || finalText[i] === " " ? finalText[i] : glyphs[Math.floor(Math.random() * glyphs.length)];
+      }
+      textNode.textContent = out;
+      title.dataset.text = out;
+      if (progress === 1) { clearInterval(timer); title.dataset.text = finalText; textNode.textContent = finalText; }
+    }, 40);
+  }
+  decode(1400);
+  setInterval(() => decode(500), 9000);
+}

@@ -54,6 +54,44 @@ body {
 .api-key-field input { width: 100%; }
 h1, h2, h3, p { margin-top: 0; }
 h1 { font-size: clamp(1.9rem, 4vw, 3.1rem); margin-bottom: 6px; letter-spacing: -.02em; color: #eaffef; text-shadow: 0 0 18px rgba(57, 255, 20, .45); }
+/* Glitch title: two offset green copies (data-text) slice and jitter over the real text in short bursts. */
+.glitch { position: relative; display: inline-block; text-transform: uppercase; letter-spacing: .02em; font-weight: 800; animation: glitch-main 4s infinite steps(1); }
+.glitch::before, .glitch::after { content: attr(data-text); position: absolute; inset: 0; pointer-events: none; opacity: 0; }
+.glitch::before { color: #39ff14; text-shadow: 0 0 10px rgba(57, 255, 20, .9); animation: glitch-a 4s infinite steps(1); }
+.glitch::after { color: #0f8a34; text-shadow: 0 0 8px rgba(15, 138, 52, .9); animation: glitch-b 4s infinite steps(1); }
+.glitch .cursor { display: inline-block; width: .5ch; height: .85em; margin-left: 4px; vertical-align: -.05em; background: var(--accent); box-shadow: 0 0 10px var(--accent); animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+@keyframes glitch-main {
+  0%, 62%, 100% { transform: none; filter: none; }
+  63% { transform: translate(2px, 0) skewX(-6deg); filter: brightness(1.5); }
+  65% { transform: translate(-3px, 1px) skewX(4deg); }
+  67% { transform: translate(1px, -1px); filter: brightness(1.2); }
+  69% { transform: none; filter: none; }
+  86% { transform: translate(-2px, 0) skewX(5deg); }
+  88% { transform: none; }
+}
+@keyframes glitch-a {
+  0%, 62%, 100% { opacity: 0; }
+  63% { opacity: 1; clip-path: inset(8% 0 62% 0); transform: translate(-6px, 0); }
+  65% { opacity: 1; clip-path: inset(48% 0 22% 0); transform: translate(5px, 0); }
+  67% { opacity: 1; clip-path: inset(75% 0 4% 0); transform: translate(-4px, 1px); }
+  69% { opacity: 0; }
+  86% { opacity: 1; clip-path: inset(30% 0 50% 0); transform: translate(-5px, 0); }
+  88% { opacity: 0; }
+}
+@keyframes glitch-b {
+  0%, 62%, 100% { opacity: 0; }
+  64% { opacity: 1; clip-path: inset(60% 0 15% 0); transform: translate(6px, 0); }
+  66% { opacity: 1; clip-path: inset(15% 0 58% 0); transform: translate(-5px, -1px); }
+  68% { opacity: 1; clip-path: inset(85% 0 0 0); transform: translate(4px, 0); }
+  69% { opacity: 0; }
+  87% { opacity: 1; clip-path: inset(55% 0 25% 0); transform: translate(5px, 0); }
+  88% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .glitch, .glitch::before, .glitch::after, .glitch .cursor { animation: none; }
+  .glitch::before, .glitch::after, .glitch .cursor { display: none; }
+}
 h2 { font-size: 1.15rem; margin: 0; letter-spacing: .01em; }
 h3 { margin-bottom: 8px; font-size: .95rem; color: var(--accent); letter-spacing: .06em; text-transform: uppercase; }
 .eyebrow { color: var(--accent); font-size: .73rem; font-weight: 700; letter-spacing: .28em; margin-bottom: 9px; text-shadow: 0 0 10px rgba(57, 255, 20, .55); }
