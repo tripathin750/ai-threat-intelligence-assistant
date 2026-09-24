@@ -231,6 +231,31 @@ class ApiSmokeTests(unittest.TestCase):
         with patch("backend.services.fault_tree_service.fetch_cwe_record", side_effect=CweRequestError("x")):
             self.assertEqual(self.client.get("/cwe/CWE-99997/fault-tree").status_code, 502)
 
+    def test_cwe_fault_tree_endpoint_schedules_one_background_gemini_upgrade(self) -> None:
+        from backend.fetch_cwe import CweRecordSchema
+        from backend.services import fault_tree_service
+
+        record = CweRecordSchema(
+            cwe_id="CWE-78", name="OS Command Injection", description="Builds an OS command from input.",
+            consequences=[], mitigations=[],
+        )
+        from dataclasses import replace
+
+        llm_on = replace(fault_tree_service.settings, gemini_api_key="k", enable_llm_analysis=True)
+        with patch.object(fault_tree_service, "settings", llm_on), \
+             patch.object(fault_tree_service, "fetch_cwe_record", return_value=record), \
+             patch("backend.main.upgrade_fault_tree") as upgrade:
+            first = self.client.get("/cwe/CWE-78/fault-tree")
+            fault_tree_service.claim_upgrade("CWE-78")  # simulate the job still running
+            second = self.client.get("/cwe/CWE-78/fault-tree")
+            fault_tree_service._in_flight.discard("CWE-78")
+
+        self.assertEqual(first.status_code, 200)
+        self.assertTrue(first.json()["upgrading"])
+        self.assertTrue(first.json()["source"].endswith("-fallback"))  # the template, served instantly
+        self.assertTrue(second.json()["upgrading"])
+        upgrade.assert_called_once_with("CWE-78")  # a second request never stacks another Gemini call
+
     def test_cwe_fault_tree_endpoint_rejects_a_malformed_id(self) -> None:
         for bad in ("cwe-79", "CWE-", "CWE-1234567", "79"):
             with self.subTest(cwe_id=bad):

@@ -324,27 +324,50 @@ function resetFaultTree(cweId) {
   $("faulttree-status").textContent = "";
 }
 
+function showFaultTree(result) {
+  const nodesById = new Map(result.tree.nodes.map((node) => [node.id, node]));
+  $("faulttree-tree").replaceChildren(renderFaultTreeNode(nodesById, result.tree.root_id));
+  $("faulttree-diagram").replaceChildren(renderFaultTreeDiagram(result.tree));
+  renderFaultTreeReasons(result.tree);
+  $("faulttree-source").textContent = `Source: ${result.source}`;
+  $("faulttree-disclaimer").textContent = `${result.cwe_name}. ${result.disclaimer}`;
+  $("faulttree-result").hidden = false;
+  $("faulttree-button").hidden = true;
+  $("faulttree-refresh").hidden = false;
+}
+
+// Gemini is slow on the free tier, so the server answers at once with a
+// template tree (upgrading: true) and swaps in Gemini's tree in the background.
+// Show the quick tree now, then poll the same URL until the upgrade lands.
+const FAULT_TREE_POLL_MS = 6000;
+const FAULT_TREE_MAX_POLLS = 30; // ~3 minutes; the server-side attempt gives up before that
+let faultTreeRun = 0; // newest load wins; older polling loops stop themselves
+
 async function loadFaultTree(refresh = false) {
   const cweId = $("faulttree-section").dataset.cwe;
   if (!cweId) return;
   const button = $("faulttree-button"); const again = $("faulttree-refresh");
+  const run = ++faultTreeRun;
+  const stillCurrent = () => run === faultTreeRun && $("faulttree-section").dataset.cwe === cweId;
   button.disabled = true; again.disabled = true;
-  $("faulttree-status").textContent = `Generating fault tree for ${cweId}… this can take up to 30 seconds.`;
+  $("faulttree-status").textContent = `Building fault tree for ${cweId}…`;
   try {
-    const query = refresh ? "?refresh=true" : "";
-    const result = await api(`/cwe/${encodeURIComponent(cweId)}/fault-tree${query}`);
-    if ($("faulttree-section").dataset.cwe !== cweId) return; // user moved to another CVE meanwhile
-    const nodesById = new Map(result.tree.nodes.map((node) => [node.id, node]));
-    const tree = $("faulttree-tree"); tree.replaceChildren(renderFaultTreeNode(nodesById, result.tree.root_id));
-    $("faulttree-diagram").replaceChildren(renderFaultTreeDiagram(result.tree));
-    renderFaultTreeReasons(result.tree);
-    $("faulttree-source").textContent = `Source: ${result.source}`;
-    $("faulttree-disclaimer").textContent = `${result.cwe_name}. ${result.disclaimer}`;
-    $("faulttree-result").hidden = false;
-    $("faulttree-status").textContent = "";
-    button.hidden = true; again.hidden = false;
+    const path = `/cwe/${encodeURIComponent(cweId)}/fault-tree`;
+    let result = await api(`${path}${refresh ? "?refresh=true" : ""}`);
+    for (let poll = 0; stillCurrent(); poll++) {
+      showFaultTree(result);
+      if (!result.upgrading || poll >= FAULT_TREE_MAX_POLLS) {
+        $("faulttree-status").textContent = result.upgrading ? "Gemini is still working; press Regenerate later to check." : "";
+        break;
+      }
+      $("faulttree-status").textContent = "Showing the quick template tree. Gemini is drafting a fuller one; it will replace this automatically…";
+      button.disabled = false; again.disabled = false;
+      await new Promise((resolve) => setTimeout(resolve, FAULT_TREE_POLL_MS));
+      if (!stillCurrent()) return;
+      result = await api(path);
+    }
   } catch (error) {
-    $("faulttree-status").textContent = error.message;
+    if (stillCurrent()) $("faulttree-status").textContent = error.message;
   } finally {
     button.disabled = false; again.disabled = false;
   }

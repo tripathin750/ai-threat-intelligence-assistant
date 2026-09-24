@@ -21,11 +21,13 @@ Results are cached per CWE id (models.CweFaultTree); ``refresh`` regenerates.
 from datetime import datetime, timedelta, timezone
 import json
 import logging
+import threading
 
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from ..config import settings
+from ..database import SessionLocal
 from ..fetch_cwe import CweRecordSchema, fetch_cwe_record
 from ..models import CweFaultTree
 from ..schemas import FaultTreeResponseSchema, FaultTreeSchema
@@ -37,6 +39,9 @@ logger = logging.getLogger(__name__)
 TEMPLATE_SOURCE = "cwe-record-template-v1"
 # MITRE (<=10s) + Gemini must fit comfortably under Render's ~60s proxy limit.
 LLM_TIMEOUT_SECONDS = 25
+# The background upgrade is not bound by a proxy timeout - nobody is waiting on
+# it - so it can afford to sit through a slow free-tier Gemini response.
+LLM_BACKGROUND_TIMEOUT_SECONDS = 90
 MAX_OUTPUT_TOKENS = 3072
 # A template tree cached because Gemini failed is only trusted this long: after
 # that (with the LLM enabled) the next request retries Gemini, so one transient
@@ -202,13 +207,13 @@ def build_template_tree(record: CweRecordSchema) -> FaultTreeSchema:
     return FaultTreeSchema.model_validate({"root_id": "n0", "nodes": nodes})
 
 
-def _generate_with_llm(record: CweRecordSchema) -> FaultTreeSchema:
+def _generate_with_llm(record: CweRecordSchema, timeout: int = LLM_TIMEOUT_SECONDS) -> FaultTreeSchema:
     content = call_gemini_json(
         SYSTEM_PROMPT,
         _build_user_prompt(record),
         _GEMINI_RESPONSE_SCHEMA,
         max_output_tokens=MAX_OUTPUT_TOKENS,
-        timeout=LLM_TIMEOUT_SECONDS,
+        timeout=timeout,
     )
     try:
         return FaultTreeSchema.model_validate_json(content)
@@ -216,8 +221,9 @@ def _generate_with_llm(record: CweRecordSchema) -> FaultTreeSchema:
         raise LLMAnalysisError(f"Model fault tree failed structural validation: {exc}") from exc
 
 
-def _to_response(row: CweFaultTree) -> FaultTreeResponseSchema:
+def _to_response(row: CweFaultTree, upgrading: bool = False) -> FaultTreeResponseSchema:
     return FaultTreeResponseSchema(
+        upgrading=upgrading,
         cwe_id=row.cwe_id,
         cwe_name=row.cwe_name,
         source=row.source,
@@ -237,8 +243,88 @@ def _is_stale_fallback(row: CweFaultTree) -> bool:
     return datetime.now(timezone.utc) - generated >= FALLBACK_RETRY_AFTER
 
 
-def get_fault_tree(db: Session, cwe_id: str, refresh: bool = False) -> FaultTreeResponseSchema:
+def _llm_enabled() -> bool:
+    return bool(settings.enable_llm_analysis and settings.gemini_api_key)
+
+
+def _generate(record: CweRecordSchema, timeout: int) -> tuple[FaultTreeSchema, str]:
+    """(tree, source): Gemini's tree when it works, otherwise the template."""
+    if _llm_enabled():
+        try:
+            return _generate_with_llm(record, timeout), f"gemini:{settings.gemini_model}"
+        except LLMAnalysisError:
+            logger.warning("LLM fault tree failed for %s; using the template.", record.cwe_id, exc_info=True)
+        except Exception:
+            logger.exception("Unexpected error generating a fault tree for %s; using the template.", record.cwe_id)
+        return build_template_tree(record), f"{TEMPLATE_SOURCE}-fallback"
+    return build_template_tree(record), TEMPLATE_SOURCE
+
+
+def _store(db: Session, cwe_id: str, record: CweRecordSchema, tree: FaultTreeSchema, source: str) -> CweFaultTree:
+    row = db.get(CweFaultTree, cwe_id)
+    if row is None:
+        row = CweFaultTree(cwe_id=cwe_id)
+        db.add(row)
+    row.cwe_name = record.name
+    row.source = source
+    row.tree = json.loads(tree.model_dump_json())
+    row.generated_at = datetime.now(timezone.utc)
+    db.commit()
+    return row
+
+
+# CWE ids whose Gemini upgrade is running right now. Per-process, which is
+# right for this single-instance deployment: it only has to stop a refresh
+# button-mash from stacking parallel Gemini calls for the same CWE.
+_in_flight: set[str] = set()
+_in_flight_lock = threading.Lock()
+
+
+def claim_upgrade(cwe_id: str) -> bool:
+    """Reserve the Gemini upgrade job for a CWE; False if one is already running."""
+    with _in_flight_lock:
+        if cwe_id in _in_flight:
+            return False
+        _in_flight.add(cwe_id)
+        return True
+
+
+def is_upgrading(cwe_id: str) -> bool:
+    with _in_flight_lock:
+        return cwe_id in _in_flight
+
+
+def upgrade_fault_tree(cwe_id: str) -> None:
+    """Background job: ask Gemini (patiently) and replace the cached template.
+
+    Owns its database session - the request that scheduled it has already
+    returned and closed its own. Always releases the in-flight claim. When
+    Gemini fails again the row is re-stored as a fallback, which restarts the
+    retry clock so the next attempt is not immediate.
+    """
+    db = SessionLocal()
+    try:
+        record = fetch_cwe_record(cwe_id)
+        tree, source = _generate(record, LLM_BACKGROUND_TIMEOUT_SECONDS)
+        _store(db, cwe_id, record, tree, source)
+    except Exception:
+        logger.exception("Background fault tree upgrade failed for %s.", cwe_id)
+    finally:
+        db.close()
+        with _in_flight_lock:
+            _in_flight.discard(cwe_id)
+
+
+def get_fault_tree(
+    db: Session, cwe_id: str, refresh: bool = False, defer_llm: bool = False
+) -> FaultTreeResponseSchema:
     """Return the cached tree for a CWE, generating (and caching) it if needed.
+
+    With ``defer_llm`` the caller never waits on Gemini: a missing (or stale,
+    or refresh-requested) tree is answered at once with the cached tree or the
+    deterministic template, and ``upgrading`` tells the caller a Gemini upgrade
+    is due - it should then call claim_upgrade() and schedule
+    upgrade_fault_tree(). Without it (the default) Gemini is awaited inline.
 
     Raises fetch_cwe.CweNotFoundError / CweRequestError when MITRE's record
     is needed but unavailable - there is nothing truthful to ground a tree in
@@ -246,33 +332,16 @@ def get_fault_tree(db: Session, cwe_id: str, refresh: bool = False) -> FaultTree
     """
     cwe_id = cwe_id.upper()
     cached = db.get(CweFaultTree, cwe_id)
-    if cached is not None and not refresh and not _is_stale_fallback(cached):
-        return _to_response(cached)
+    needs_llm = cached is None or refresh or _is_stale_fallback(cached)
+    if cached is not None and not needs_llm:
+        return _to_response(cached, upgrading=is_upgrading(cwe_id))
+
+    if defer_llm and _llm_enabled():
+        if cached is None:
+            record = fetch_cwe_record(cwe_id)
+            cached = _store(db, cwe_id, record, build_template_tree(record), f"{TEMPLATE_SOURCE}-fallback")
+        return _to_response(cached, upgrading=True)
 
     record = fetch_cwe_record(cwe_id)
-
-    source = TEMPLATE_SOURCE
-    tree: FaultTreeSchema | None = None
-    if settings.enable_llm_analysis and settings.gemini_api_key:
-        try:
-            tree = _generate_with_llm(record)
-            source = f"gemini:{settings.gemini_model}"
-        except LLMAnalysisError:
-            logger.warning("LLM fault tree failed for %s; using the template.", cwe_id, exc_info=True)
-            source = f"{TEMPLATE_SOURCE}-fallback"
-        except Exception:
-            logger.exception("Unexpected error generating a fault tree for %s; using the template.", cwe_id)
-            source = f"{TEMPLATE_SOURCE}-fallback"
-    if tree is None:
-        tree = build_template_tree(record)
-
-    payload = json.loads(tree.model_dump_json())
-    if cached is None:
-        cached = CweFaultTree(cwe_id=cwe_id)
-        db.add(cached)
-    cached.cwe_name = record.name
-    cached.source = source
-    cached.tree = payload
-    cached.generated_at = datetime.now(timezone.utc)
-    db.commit()
-    return _to_response(cached)
+    tree, source = _generate(record, LLM_TIMEOUT_SECONDS)
+    return _to_response(_store(db, cwe_id, record, tree, source))

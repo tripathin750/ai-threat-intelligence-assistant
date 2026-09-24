@@ -209,6 +209,84 @@ class FaultTreeServiceTests(unittest.TestCase):
 
         self.assertEqual(gemini.call_count, 1)
 
+    def test_deferred_mode_answers_with_the_template_at_once_and_never_calls_gemini(self) -> None:
+        with patch.object(fault_tree_service, "settings", _enabled()), \
+             patch.object(fault_tree_service, "fetch_cwe_record", return_value=_record()), \
+             patch.object(fault_tree_service, "call_gemini_json") as gemini:
+            result = fault_tree_service.get_fault_tree(self.db, "CWE-79", defer_llm=True)
+
+        gemini.assert_not_called()
+        self.assertTrue(result.upgrading)
+        self.assertEqual(result.source, f"{fault_tree_service.TEMPLATE_SOURCE}-fallback")
+        self.assertEqual(self.db.query(CweFaultTree).count(), 1)
+
+    def test_deferred_mode_with_a_fresh_gemini_tree_is_not_upgrading(self) -> None:
+        with patch.object(fault_tree_service, "settings", _enabled()), \
+             patch.object(fault_tree_service, "fetch_cwe_record", return_value=_record()), \
+             patch.object(fault_tree_service, "call_gemini_json", return_value=_llm_tree_json()):
+            fault_tree_service.get_fault_tree(self.db, "CWE-79")
+            result = fault_tree_service.get_fault_tree(self.db, "CWE-79", defer_llm=True)
+
+        self.assertFalse(result.upgrading)
+        self.assertTrue(result.source.startswith("gemini:"))
+
+    def test_deferred_refresh_keeps_serving_the_cached_tree_while_upgrading(self) -> None:
+        with patch.object(fault_tree_service, "settings", _enabled()), \
+             patch.object(fault_tree_service, "fetch_cwe_record", return_value=_record()), \
+             patch.object(fault_tree_service, "call_gemini_json", return_value=_llm_tree_json()):
+            fault_tree_service.get_fault_tree(self.db, "CWE-79")
+            result = fault_tree_service.get_fault_tree(self.db, "CWE-79", refresh=True, defer_llm=True)
+
+        self.assertTrue(result.upgrading)
+        self.assertTrue(result.source.startswith("gemini:"), "the good tree stays visible during the refresh")
+
+    def test_deferred_mode_with_the_llm_disabled_is_immediate_and_not_upgrading(self) -> None:
+        with patch.object(fault_tree_service, "settings", _disabled()), \
+             patch.object(fault_tree_service, "fetch_cwe_record", return_value=_record()):
+            result = fault_tree_service.get_fault_tree(self.db, "CWE-79", defer_llm=True)
+
+        self.assertFalse(result.upgrading)
+        self.assertEqual(result.source, fault_tree_service.TEMPLATE_SOURCE)
+
+    def test_upgrade_job_replaces_the_template_with_gemini_and_releases_its_claim(self) -> None:
+        maker = sessionmaker(bind=self.engine)
+        with patch.object(fault_tree_service, "settings", _enabled()), \
+             patch.object(fault_tree_service, "fetch_cwe_record", return_value=_record()), \
+             patch.object(fault_tree_service, "SessionLocal", maker), \
+             patch.object(fault_tree_service, "call_gemini_json", return_value=_llm_tree_json()) as gemini:
+            fault_tree_service.get_fault_tree(self.db, "CWE-79", defer_llm=True)
+            self.assertTrue(fault_tree_service.claim_upgrade("CWE-79"))
+            self.assertFalse(fault_tree_service.claim_upgrade("CWE-79"), "no second job while one runs")
+            fault_tree_service.upgrade_fault_tree("CWE-79")
+
+        self.assertEqual(gemini.call_args.kwargs["timeout"], fault_tree_service.LLM_BACKGROUND_TIMEOUT_SECONDS)
+        self.db.expire_all()
+        self.assertTrue(self.db.get(CweFaultTree, "CWE-79").source.startswith("gemini:"))
+        self.assertFalse(fault_tree_service.is_upgrading("CWE-79"))
+
+    def test_upgrade_job_that_fails_keeps_a_valid_fallback_and_releases_its_claim(self) -> None:
+        maker = sessionmaker(bind=self.engine)
+        with patch.object(fault_tree_service, "settings", _enabled()), \
+             patch.object(fault_tree_service, "fetch_cwe_record", return_value=_record()), \
+             patch.object(fault_tree_service, "SessionLocal", maker), \
+             patch.object(fault_tree_service, "call_gemini_json", side_effect=LLMAnalysisError("busy")):
+            fault_tree_service.get_fault_tree(self.db, "CWE-79", defer_llm=True)
+            fault_tree_service.claim_upgrade("CWE-79")
+            fault_tree_service.upgrade_fault_tree("CWE-79")
+
+        self.db.expire_all()
+        self.assertTrue(self.db.get(CweFaultTree, "CWE-79").source.endswith("-fallback"))
+        self.assertFalse(fault_tree_service.is_upgrading("CWE-79"))
+
+    def test_upgrade_job_releases_its_claim_even_when_mitre_is_down(self) -> None:
+        maker = sessionmaker(bind=self.engine)
+        with patch.object(fault_tree_service, "fetch_cwe_record", side_effect=CweRequestError("down")), \
+             patch.object(fault_tree_service, "SessionLocal", maker):
+            fault_tree_service.claim_upgrade("CWE-79")
+            fault_tree_service.upgrade_fault_tree("CWE-79")  # must not raise
+
+        self.assertFalse(fault_tree_service.is_upgrading("CWE-79"))
+
     def test_unknown_cwe_propagates_and_caches_nothing(self) -> None:
         with patch.object(fault_tree_service, "fetch_cwe_record", side_effect=CweNotFoundError("nope")):
             with self.assertRaises(CweNotFoundError):

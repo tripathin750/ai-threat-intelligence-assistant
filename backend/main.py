@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 from typing import AsyncGenerator
 
-from fastapi import Depends, FastAPI, HTTPException, Path as ApiPath, Query, Request, status
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Path as ApiPath, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
@@ -38,7 +38,7 @@ from .schemas import (
 )
 from .security import RateLimitMiddleware, SecurityHeadersMiddleware, verify_api_key
 from .services.attack_service import seed_attack_catalog
-from .services.fault_tree_service import get_fault_tree
+from .services.fault_tree_service import claim_upgrade, get_fault_tree, upgrade_fault_tree
 from .services.ingestion_service import synchronize_nvd
 from .services.intelligence_service import build_intelligence
 from .services.kev_service import synchronize_kev
@@ -236,6 +236,7 @@ def get_impact_summary(db: Session = Depends(get_db)) -> ImpactSummarySchema:
     dependencies=[Depends(verify_api_key)],
 )
 def get_cwe_fault_tree(
+    background_tasks: BackgroundTasks,
     cwe_id: str = ApiPath(pattern=r"^CWE-\d{1,5}$"),
     refresh: bool = Query(default=False),
     db: Session = Depends(get_db),
@@ -244,9 +245,15 @@ def get_cwe_fault_tree(
 
     Grounded in MITRE's official CWE record; produced by Gemini when enabled
     and by a deterministic template otherwise - see services/fault_tree_service.py.
+    Gemini is slow on the free tier, so the request never waits for it: the
+    template is returned at once with ``upgrading: true`` and Gemini's tree
+    replaces it in the background; poll the same URL to pick it up.
     """
     try:
-        return get_fault_tree(db, cwe_id, refresh=refresh)
+        result = get_fault_tree(db, cwe_id, refresh=refresh, defer_llm=True)
+        if result.upgrading and claim_upgrade(result.cwe_id):
+            background_tasks.add_task(upgrade_fault_tree, result.cwe_id)
+        return result
     except CweNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="CWE not found in the MITRE catalogue.") from exc
     except CweRequestError as exc:
