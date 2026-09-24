@@ -361,7 +361,7 @@
           <tr><td>Frontend</td><td>Vanilla HTML / CSS / JS</td><td>No build step, no framework — served as static files by the same FastAPI app</td></tr>
           <tr><td>Security middleware</td><td>Custom rate limiter, API-key gate, security headers, trusted-host + CORS</td><td>Hand-written, in <code>security.py</code></td></tr>
           <tr><td>Hosting</td><td>Render (free web service, via <code>render.yaml</code> Blueprint)</td><td>One-click deploy from the repo, zero cost</td></tr>
-          <tr><td>Testing</td><td>Python <code>unittest</code> + <code>httpx</code> (FastAPI TestClient)</td><td>127 tests, entirely offline — no API keys or network access required to run the suite</td></tr>
+          <tr><td>Testing</td><td>Python <code>unittest</code> + <code>httpx</code> (FastAPI TestClient)</td><td>131 tests, entirely offline — no API keys or network access required to run the suite</td></tr>
         </table>
       </div>
     </section>
@@ -671,7 +671,7 @@ flowchart TD
 
     <section id="testing">
       <div class="section-head"><span class="section-num">13</span><h2>Testing philosophy</h2></div>
-      <p>127 tests, all offline — no real API key or network access needed to run the suite, including for the LLM layer, where <code>requests.post</code> is mocked directly rather than making a real Gemini call. One real bug this discipline caught: enabling Gemini in a developer's local <code>.env</code> for everyday use also flowed into the shared settings object the test suite imports, making one end-to-end test start hitting the real API and fail. Fixed by forcing <code>ENABLE_LLM_ANALYSIS=false</code> at test-module import time, the same pattern already used to force an isolated throwaway database.</p>
+      <p>131 tests, all offline — no real API key or network access needed to run the suite, including for the LLM layer, where <code>requests.post</code> is mocked directly rather than making a real Gemini call. One real bug this discipline caught: enabling Gemini in a developer's local <code>.env</code> for everyday use also flowed into the shared settings object the test suite imports, making one end-to-end test start hitting the real API and fail. Fixed by forcing <code>ENABLE_LLM_ANALYSIS=false</code> at test-module import time, the same pattern already used to force an isolated throwaway database.</p>
     </section>
 
     <section id="triage">
@@ -697,7 +697,7 @@ flowchart TD
       <div class="section-head"><span class="section-num">15</span><h2>CWE fault trees</h2></div>
       <p class="lede">Fault Tree Analysis for weaknesses: <code>GET /cwe/{cwe_id}/fault-tree</code> turns any CWE into a top event decomposed by AND / OR gates into the conditions that must hold for exploitation.</p>
       <p><strong>Evidence.</strong> <code>fetch_cwe.py</code> pulls the weakness from MITRE's CWE REST API (description, common consequences, potential mitigations), clipping every field. <strong>Generation.</strong> <code>services/fault_tree_service.py</code> asks Gemini (shared <code>call_gemini_json</code> helper, same double opt-in as CVE analysis) with the MITRE text inside a <code>&lt;cwe_record&gt;</code> data block that the system prompt declares is never instructions. Without an LLM, or on any failure, a deterministic template built from the same record is used, and the <code>source</code> field records which one it was (<code>gemini:&lt;model&gt;</code>, <code>cwe-record-template-v1</code>, or <code>-fallback</code>).</p>
-      <p><strong>Validation.</strong> <code>FaultTreeSchema</code> checks structure, not just shape: unique ids, existing root, no unknown children, AND/OR gates need at least two children, an INHIBIT gate exactly one plus a <code>condition</code> (and no other node may have one), leaves none, no cycles or shared children, every node reachable, depth at most 5, 3 to 30 nodes. <strong>Caching.</strong> One row per CWE in <code>cwe_fault_trees</code>; a cached tree is still served if MITRE is down, and <code>?refresh=true</code> regenerates. <strong>Frontend.</strong> Rendered with <code>textContent</code> only, since every label is model- or MITRE-derived.</p>
+      <p><strong>Validation.</strong> <code>FaultTreeSchema</code> checks structure, not just shape: unique ids, existing root, no unknown children, AND/OR gates need at least two children, an INHIBIT gate exactly one plus a <code>condition</code> (and no other node may have one), leaves none, no cycles or shared children, every node reachable, depth at most 5, 3 to 30 nodes. <strong>Caching.</strong> One row per CWE in <code>cwe_fault_trees</code>; a template tree stored because Gemini failed is retried after 10 minutes, so one outage never pins a CWE to the template; a cached tree is still served if MITRE is down, and <code>?refresh=true</code> regenerates. <strong>Frontend.</strong> Rendered with <code>textContent</code> only, since every label is model- or MITRE-derived.</p>
     </section>
 
     <section id="reference">

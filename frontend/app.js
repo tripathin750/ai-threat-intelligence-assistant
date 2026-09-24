@@ -329,7 +329,7 @@ async function loadFaultTree(refresh = false) {
   if (!cweId) return;
   const button = $("faulttree-button"); const again = $("faulttree-refresh");
   button.disabled = true; again.disabled = true;
-  $("faulttree-status").textContent = `Generating fault tree for ${cweId}… this can take up to a minute.`;
+  $("faulttree-status").textContent = `Generating fault tree for ${cweId}… this can take up to 30 seconds.`;
   try {
     const query = refresh ? "?refresh=true" : "";
     const result = await api(`/cwe/${encodeURIComponent(cweId)}/fault-tree${query}`);

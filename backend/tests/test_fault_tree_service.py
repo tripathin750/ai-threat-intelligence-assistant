@@ -167,6 +167,48 @@ class FaultTreeServiceTests(unittest.TestCase):
         self.assertTrue(result.source.startswith("gemini:"))
         self.assertEqual(self.db.query(CweFaultTree).count(), 1)
 
+    def _age_cached_row(self, minutes: int) -> None:
+        from datetime import datetime, timedelta, timezone
+        row = self.db.query(CweFaultTree).one()
+        row.generated_at = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+        self.db.commit()
+
+    def test_a_fresh_fallback_is_served_without_retrying_gemini(self) -> None:
+        with patch.object(fault_tree_service, "settings", _enabled()),              patch.object(fault_tree_service, "fetch_cwe_record", return_value=_record()),              patch.object(fault_tree_service, "call_gemini_json", side_effect=LLMAnalysisError("down")) as gemini:
+            fault_tree_service.get_fault_tree(self.db, "CWE-79")
+            result = fault_tree_service.get_fault_tree(self.db, "CWE-79")
+
+        self.assertEqual(gemini.call_count, 1)
+        self.assertTrue(result.source.endswith("-fallback"))
+
+    def test_an_old_fallback_is_retried_and_replaced_by_a_gemini_tree(self) -> None:
+        with patch.object(fault_tree_service, "settings", _enabled()),              patch.object(fault_tree_service, "fetch_cwe_record", return_value=_record()),              patch.object(fault_tree_service, "call_gemini_json", side_effect=LLMAnalysisError("down")):
+            fault_tree_service.get_fault_tree(self.db, "CWE-79")
+        self._age_cached_row(minutes=11)
+        with patch.object(fault_tree_service, "settings", _enabled()),              patch.object(fault_tree_service, "fetch_cwe_record", return_value=_record()),              patch.object(fault_tree_service, "call_gemini_json", return_value=_llm_tree_json()) as gemini:
+            result = fault_tree_service.get_fault_tree(self.db, "CWE-79")
+
+        gemini.assert_called_once()
+        self.assertTrue(result.source.startswith("gemini:"))
+        self.assertEqual(self.db.query(CweFaultTree).count(), 1)
+
+    def test_an_old_fallback_is_kept_when_the_llm_is_disabled(self) -> None:
+        with patch.object(fault_tree_service, "settings", _enabled()),              patch.object(fault_tree_service, "fetch_cwe_record", return_value=_record()),              patch.object(fault_tree_service, "call_gemini_json", side_effect=LLMAnalysisError("down")):
+            fault_tree_service.get_fault_tree(self.db, "CWE-79")
+        self._age_cached_row(minutes=60)
+        with patch.object(fault_tree_service, "settings", _disabled()),              patch.object(fault_tree_service, "fetch_cwe_record") as fetch:
+            fault_tree_service.get_fault_tree(self.db, "CWE-79")
+
+        fetch.assert_not_called()
+
+    def test_a_gemini_tree_is_never_treated_as_stale(self) -> None:
+        with patch.object(fault_tree_service, "settings", _enabled()),              patch.object(fault_tree_service, "fetch_cwe_record", return_value=_record()),              patch.object(fault_tree_service, "call_gemini_json", return_value=_llm_tree_json()) as gemini:
+            fault_tree_service.get_fault_tree(self.db, "CWE-79")
+            self._age_cached_row(minutes=600)
+            fault_tree_service.get_fault_tree(self.db, "CWE-79")
+
+        self.assertEqual(gemini.call_count, 1)
+
     def test_unknown_cwe_propagates_and_caches_nothing(self) -> None:
         with patch.object(fault_tree_service, "fetch_cwe_record", side_effect=CweNotFoundError("nope")):
             with self.assertRaises(CweNotFoundError):

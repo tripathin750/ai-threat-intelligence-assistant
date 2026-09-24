@@ -18,7 +18,7 @@ Two producers, one contract (schemas.FaultTreeSchema):
 Results are cached per CWE id (models.CweFaultTree); ``refresh`` regenerates.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import logging
 
@@ -35,9 +35,14 @@ from .llm_service import LLMAnalysisError, call_gemini_json
 logger = logging.getLogger(__name__)
 
 TEMPLATE_SOURCE = "cwe-record-template-v1"
-# MITRE (<=10s) + Gemini must fit under Render's ~60s proxy limit.
-LLM_TIMEOUT_SECONDS = 40
+# MITRE (<=10s) + Gemini must fit comfortably under Render's ~60s proxy limit.
+LLM_TIMEOUT_SECONDS = 25
 MAX_OUTPUT_TOKENS = 3072
+# A template tree cached because Gemini failed is only trusted this long: after
+# that (with the LLM enabled) the next request retries Gemini, so one transient
+# outage never pins a CWE to the template. The window also stops a Gemini
+# outage from making every visitor wait out a timeout.
+FALLBACK_RETRY_AFTER = timedelta(minutes=10)
 
 DISCLAIMER = (
     "Fault trees are advisory decompositions of a weakness class, grounded in MITRE's CWE record. "
@@ -222,6 +227,16 @@ def _to_response(row: CweFaultTree) -> FaultTreeResponseSchema:
     )
 
 
+def _is_stale_fallback(row: CweFaultTree) -> bool:
+    """True for a cached failure-fallback tree that is due another Gemini attempt."""
+    if not row.source.endswith("-fallback") or not (settings.enable_llm_analysis and settings.gemini_api_key):
+        return False
+    generated = row.generated_at
+    if generated.tzinfo is None:  # SQLite hands back naive datetimes
+        generated = generated.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) - generated >= FALLBACK_RETRY_AFTER
+
+
 def get_fault_tree(db: Session, cwe_id: str, refresh: bool = False) -> FaultTreeResponseSchema:
     """Return the cached tree for a CWE, generating (and caching) it if needed.
 
@@ -231,7 +246,7 @@ def get_fault_tree(db: Session, cwe_id: str, refresh: bool = False) -> FaultTree
     """
     cwe_id = cwe_id.upper()
     cached = db.get(CweFaultTree, cwe_id)
-    if cached is not None and not refresh:
+    if cached is not None and not refresh and not _is_stale_fallback(cached):
         return _to_response(cached)
 
     record = fetch_cwe_record(cwe_id)
