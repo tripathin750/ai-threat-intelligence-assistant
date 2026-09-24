@@ -372,6 +372,10 @@ class FaultTreeResponseSchema(BaseModel):
     generated_at: datetime
     tree: FaultTreeSchema
     disclaimer: str
+    # True while a Gemini upgrade of this tree is due or running in the
+    # background: the tree shown is the deterministic template, and asking
+    # again shortly returns Gemini's tree once it lands.
+    upgrading: bool = False
 
 
 class IntelligenceResponseSchema(BaseModel):
