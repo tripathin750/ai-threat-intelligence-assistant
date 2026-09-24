@@ -85,6 +85,61 @@ class LLMAnalysisError(RuntimeError):
     """
 
 
+def call_gemini_json(
+    system_prompt: str,
+    user_prompt: str,
+    response_schema: dict,
+    max_output_tokens: int = MAX_OUTPUT_TOKENS,
+    timeout: int = REQUEST_TIMEOUT_SECONDS,
+) -> str:
+    """POST one structured-output request to Gemini and return the raw JSON text.
+
+    The single place that speaks Gemini's generateContent protocol, shared by
+    every LLM feature (CVE analysis here, CWE fault trees in
+    services/fault_tree_service.py). Callers still validate the returned text
+    against their own Pydantic schema - this only guarantees "a JSON string
+    came back", never that it has the right shape.
+
+    Raises LLMAnalysisError on any request failure or unexpected response.
+
+    The API key travels in the ``x-goog-api-key`` header, never the URL: a
+    ``?key=`` query parameter ends up inside every ``requests`` exception
+    message (which embeds the URL), and those messages are logged - so any
+    Gemini 429/503 would have written the key into the deployment's logs.
+    Error messages below deliberately carry only the exception type and HTTP
+    status, never the exception text, as a second line of defence.
+    """
+    try:
+        response = requests.post(
+            f"{GEMINI_API_BASE}/{settings.gemini_model}:generateContent",
+            headers={"x-goog-api-key": settings.gemini_api_key},
+            json={
+                "systemInstruction": {"parts": [{"text": system_prompt}]},
+                "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
+                "generationConfig": {
+                    "responseMimeType": "application/json",
+                    "responseSchema": response_schema,
+                    "maxOutputTokens": max_output_tokens,
+                },
+            },
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except requests.RequestException as exc:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        detail = f"{type(exc).__name__}" + (f" (HTTP {status})" if status else "")
+        # `from None`: the chained exception's text/URL must not reach the logs either.
+        raise LLMAnalysisError(f"Gemini API call failed: {detail}") from None
+    except ValueError as exc:
+        raise LLMAnalysisError("Gemini returned a non-JSON response.") from exc
+
+    try:
+        return payload["candidates"][0]["content"]["parts"][0]["text"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise LLMAnalysisError(f"Unexpected Gemini response shape: {payload!r}") from exc
+
+
 def analyse_with_llm(vulnerability: VulnerabilitySchema) -> AnalysisResult:
     """Ask Gemini to analyze one CVE and return a validated AnalysisResult.
 
@@ -92,34 +147,7 @@ def analyse_with_llm(vulnerability: VulnerabilitySchema) -> AnalysisResult:
     Never called with unset settings.gemini_api_key - generate_analysis()
     guards that.
     """
-    try:
-        response = requests.post(
-            f"{GEMINI_API_BASE}/{settings.gemini_model}:generateContent",
-            params={"key": settings.gemini_api_key},
-            json={
-                "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
-                "contents": [
-                    {"role": "user", "parts": [{"text": build_user_prompt(vulnerability)}]}
-                ],
-                "generationConfig": {
-                    "responseMimeType": "application/json",
-                    "responseSchema": _GEMINI_RESPONSE_SCHEMA,
-                    "maxOutputTokens": MAX_OUTPUT_TOKENS,
-                },
-            },
-            timeout=REQUEST_TIMEOUT_SECONDS,
-        )
-        response.raise_for_status()
-        payload = response.json()
-    except requests.RequestException as exc:
-        raise LLMAnalysisError(f"Gemini API call failed: {exc}") from exc
-    except ValueError as exc:
-        raise LLMAnalysisError("Gemini returned a non-JSON response.") from exc
-
-    try:
-        content = payload["candidates"][0]["content"]["parts"][0]["text"]
-    except (KeyError, IndexError, TypeError) as exc:
-        raise LLMAnalysisError(f"Unexpected Gemini response shape: {payload!r}") from exc
+    content = call_gemini_json(SYSTEM_PROMPT, build_user_prompt(vulnerability), _GEMINI_RESPONSE_SCHEMA)
 
     try:
         parsed = LLMAnalysisOutputSchema.model_validate_json(content)

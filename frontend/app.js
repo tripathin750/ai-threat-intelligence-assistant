@@ -146,10 +146,72 @@ function renderKevSection(kev) {
   ransomware.className = `badge ${kev.known_ransomware_use === "Known" ? "badge-CRITICAL" : "badge-neutral"}`;
 }
 
+// Fault tree (per CWE). Everything in the tree is LLM- or MITRE-derived text,
+// so it is rendered with textContent only - never innerHTML.
+function renderFaultTreeNode(nodesById, nodeId) {
+  const node = nodesById.get(nodeId);
+  const item = document.createElement("li");
+  const box = document.createElement("span");
+  box.className = `ft-node${node.gate === "NONE" ? " ft-leaf" : ""}`;
+  if (node.gate !== "NONE") {
+    const gate = document.createElement("span");
+    gate.className = `ft-gate ft-gate-${node.gate}`;
+    gate.textContent = node.gate;
+    box.append(gate);
+  }
+  const label = document.createElement("span");
+  label.textContent = node.label;
+  box.append(label);
+  item.append(box);
+  if (node.children.length) {
+    const list = document.createElement("ul");
+    for (const childId of node.children) list.append(renderFaultTreeNode(nodesById, childId));
+    item.append(list);
+  }
+  return item;
+}
+
+function resetFaultTree(cweId) {
+  const section = $("faulttree-section");
+  section.hidden = !cweId;
+  section.dataset.cwe = cweId || "";
+  $("faulttree-cwe").textContent = cweId ? `(${cweId})` : "";
+  $("faulttree-result").hidden = true;
+  $("faulttree-refresh").hidden = true;
+  $("faulttree-button").hidden = false;
+  $("faulttree-button").disabled = false;
+  $("faulttree-status").textContent = "";
+}
+
+async function loadFaultTree(refresh = false) {
+  const cweId = $("faulttree-section").dataset.cwe;
+  if (!cweId) return;
+  const button = $("faulttree-button"); const again = $("faulttree-refresh");
+  button.disabled = true; again.disabled = true;
+  $("faulttree-status").textContent = `Generating fault tree for ${cweId}… this can take up to a minute.`;
+  try {
+    const query = refresh ? "?refresh=true" : "";
+    const result = await api(`/cwe/${encodeURIComponent(cweId)}/fault-tree${query}`);
+    if ($("faulttree-section").dataset.cwe !== cweId) return; // user moved to another CVE meanwhile
+    const nodesById = new Map(result.tree.nodes.map((node) => [node.id, node]));
+    const tree = $("faulttree-tree"); tree.replaceChildren(renderFaultTreeNode(nodesById, result.tree.root_id));
+    $("faulttree-source").textContent = `Source: ${result.source}`;
+    $("faulttree-disclaimer").textContent = `${result.cwe_name}. ${result.disclaimer}`;
+    $("faulttree-result").hidden = false;
+    $("faulttree-status").textContent = "";
+    button.hidden = true; again.hidden = false;
+  } catch (error) {
+    $("faulttree-status").textContent = error.message;
+  } finally {
+    button.disabled = false; again.disabled = false;
+  }
+}
+
 function renderIntelligence(data) {
   $("intelligence-empty").hidden = true;
   $("intelligence-content").hidden = false;
   renderKevSection(data.cve.kev);
+  resetFaultTree(data.cve.cwe_id);
   const summary = $("analysis-summary"); summary.replaceChildren();
   for (const point of splitIntoPoints(data.analysis.summary)) {
     const item = document.createElement("li"); item.textContent = point; summary.append(item);
@@ -418,6 +480,8 @@ $("search-button").addEventListener("click", () => { state.offset = 0; loadCves(
 $("search-input").addEventListener("keydown", (event) => { if (event.key === "Enter") { state.offset = 0; loadCves(); } });
 $("sync-button").addEventListener("click", syncCves);
 $("sync-kev-button").addEventListener("click", syncKev);
+$("faulttree-button").addEventListener("click", () => loadFaultTree(false));
+$("faulttree-refresh").addEventListener("click", () => loadFaultTree(true));
 $("triage-toggle-button").addEventListener("click", () => {
   const panel = $("triage-panel");
   panel.hidden = !panel.hidden;

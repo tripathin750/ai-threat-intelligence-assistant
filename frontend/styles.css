@@ -140,6 +140,14 @@ textarea { min-height: 40px; font-family: inherit; resize: vertical; }
 }
 #kev-section h3 { color: var(--critical); }
 #kev-section p { color: #ffd3dc; font-size: .88rem; }
+.ft-tree, .ft-tree ul { list-style: none; margin: 0; padding-left: 0; }
+.ft-tree ul { margin-left: 12px; padding-left: 16px; border-left: 1px solid var(--border-strong); }
+.ft-tree li { margin: 8px 0; }
+.ft-node { display: inline-flex; align-items: flex-start; gap: 8px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel-strong); font-size: .86rem; max-width: 100%; }
+.ft-node.ft-leaf { border-style: dashed; }
+.ft-gate { flex: none; font-size: .68rem; font-weight: 700; letter-spacing: .06em; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border-strong); }
+.ft-gate-AND { color: var(--high); border-color: var(--high); }
+.ft-gate-OR { color: var(--low); border-color: var(--low); }
 .kev-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; margin: 10px 0 0; }
 .kev-facts dt { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 2px; }
 .kev-facts dd { margin: 0; font-size: .88rem; }

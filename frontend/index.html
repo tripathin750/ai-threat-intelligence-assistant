@@ -150,6 +150,20 @@
               <p id="immediate-action"></p>
               <ul id="mitigation-list"></ul>
             </section>
+            <section id="faulttree-section" hidden>
+              <h3>Fault tree <span id="faulttree-cwe" class="muted"></span></h3>
+              <p class="secondary-text">How this weakness gets successfully exploited: the top event, broken down by AND / OR gates into the conditions that must hold.</p>
+              <div class="chips">
+                <button id="faulttree-button" class="button button-secondary" type="button">Generate fault tree</button>
+                <button id="faulttree-refresh" class="button button-secondary" type="button" hidden>Regenerate</button>
+              </div>
+              <p id="faulttree-status" class="secondary-text" role="status"></p>
+              <div id="faulttree-result" hidden>
+                <div class="chips"><span id="faulttree-source" class="badge badge-neutral"></span></div>
+                <ul id="faulttree-tree" class="ft-tree"></ul>
+                <p id="faulttree-disclaimer" class="secondary-text"></p>
+              </div>
+            </section>
             <details>
               <summary>Evidence used</summary>
               <ul id="evidence-list"></ul>
