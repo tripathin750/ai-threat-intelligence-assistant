@@ -57,6 +57,8 @@ _GEMINI_RESPONSE_SCHEMA = {
                     "label": {"type": "string"},
                     "gate": {"type": "string"},
                     "children": {"type": "array", "items": {"type": "string"}},
+                    "condition": {"type": "string"},
+                    "reason": {"type": "string"},
                 },
                 "required": ["id", "label", "gate", "children"],
             },
@@ -77,9 +79,18 @@ Rules you must follow:
   weakness leading to its impact. Decompose it with AND/OR gates down to
   concrete basic events.
 - gate meanings: "AND" = the event occurs only if ALL children occur;
-  "OR" = it occurs if ANY child occurs; "NONE" = a basic event (a leaf).
-- Every gate needs at least two children. Every leaf has gate "NONE" and an
-  empty children list. Use 8 to 18 nodes in total and at most 4 levels deep.
+  "OR" = it occurs if ANY child occurs; "INHIBIT" = its single child causes
+  the event only when an enabling condition also holds; "NONE" = a basic
+  event (a leaf).
+- AND/OR gates need at least two children. An INHIBIT gate has exactly ONE
+  child and a "condition" (a short phrase for the enabling event, e.g. a
+  precondition or environment factor); no other node has a "condition".
+  Use INHIBIT where an event needs a qualifying circumstance, and use
+  genuine OR gates where several independent routes exist - do not make
+  every gate an AND. Every leaf has gate "NONE" and an empty children list.
+  Use 8 to 18 nodes in total and at most 4 levels deep.
+- Give every node a "reason": one or two sentences saying why it is in the
+  tree, tied to the record (its description, consequences or mitigations).
 - It must be a true tree: exactly one node is the root; every other node has
   exactly one parent; no cycles; no node appears under two parents.
 - Ground the tree in the record: reflect its stated consequences and
@@ -89,7 +100,8 @@ Rules you must follow:
   of advice.
 - Respond with a single JSON object and nothing else:
   {"root_id": string, "nodes": [{"id": string, "label": string,
-   "gate": "AND"|"OR"|"NONE", "children": [string, ...]}, ...]}
+   "gate": "AND"|"OR"|"INHIBIT"|"NONE", "children": [string, ...],
+   "condition": string (INHIBIT only), "reason": string}, ...]}
   Use short ids like "n1", "n2".
 """
 
@@ -135,7 +147,7 @@ def build_template_tree(record: CweRecordSchema) -> FaultTreeSchema:
     if impacts:
         top += f", leading to: {', '.join(impacts[:2])}"
 
-    controls = []
+    controls: list[tuple[str, str]] = []  # (label, reason)
     for item in record.mitigations:
         head = item.partition(":")[0].strip()
         # fetch_cwe formats mitigations as "<strategy>: <text>" with the
@@ -146,32 +158,43 @@ def build_template_tree(record: CweRecordSchema) -> FaultTreeSchema:
         else:
             name = item.split(". ")[0].rstrip(".")
             name = name if len(name) <= 110 else name[:107].rstrip() + "..."
-        label = f"Control not applied or ineffective: {name}"
-        if label not in controls:  # MITRE often repeats a strategy across phases
-            controls.append(_label(label, 200))
+        label = _label(f"Control not applied or ineffective: {name}", 200)
+        if all(label != existing for existing, _ in controls):  # MITRE repeats strategies across phases
+            controls.append((label, _label(f"MITRE lists this as a mitigation for {record.cwe_id}: {item}", 400)))
         if len(controls) == 4:
             break
+    generic = "Not taken from the record: a generic defence-in-depth control included so the gate has enough inputs."
     if len(controls) < 2:
-        controls.append("No compensating control (e.g. least privilege, monitoring) limits the impact")
+        controls.append(("No compensating control (e.g. least privilege, monitoring) limits the impact", generic))
     if len(controls) < 2:
-        controls.insert(0, "No secure-design or vetted-library control prevents the weakness")
+        controls.insert(0, ("No secure-design or vetted-library control prevents the weakness", generic))
 
+    first_sentence = record.description.split(". ")[0].rstrip(".")
     nodes = [
-        {"id": "n1", "label": _label(top), "gate": "AND", "children": ["n2", "n3", "n4"]},
-        {"id": "n2", "label": _label(f"Code or configuration exhibiting the weakness is present: {record.name}"), "gate": "NONE", "children": []},
-        {"id": "n3", "label": "An attacker can influence the data or conditions reaching the weak code path", "gate": "OR", "children": ["r1", "r2"]},
+        {"id": "n0", "label": _label(top), "gate": "INHIBIT", "children": ["n1"],
+         "condition": "Impact is not contained by compensating controls (least privilege, isolation, monitoring)",
+         "reason": _label(
+             "INHIBIT gate: triggering the weakness only becomes this impact when nothing downstream "
+             "limits the damage. Impacts are those MITRE lists for " + record.cwe_id + ".", 400)},
+        {"id": "n1", "label": "Weakness is successfully triggered by an attacker", "gate": "AND", "children": ["n2", "n3", "n4"],
+         "reason": "AND gate: exploitation needs all three: the flaw exists, an attacker can reach it, and nothing stops the attempt."},
+        {"id": "n2", "label": _label(f"Code or configuration exhibiting the weakness is present: {record.name}"), "gate": "NONE", "children": [],
+         "reason": _label(f"MITRE describes the weakness as: {first_sentence}.", 400)},
+        {"id": "n3", "label": "An attacker can influence the data or conditions reaching the weak code path", "gate": "OR", "children": ["r1", "r2"],
+         "reason": "OR gate: any single route to the weak code is enough, so the attacker needs only one."},
         {"id": "n4", "label": "No effective control stands between the attacker and the weakness", "gate": "AND",
-         "children": [f"c{i}" for i in range(1, len(controls) + 1)]},
+         "children": [f"c{i}" for i in range(1, len(controls) + 1)],
+         "reason": "AND gate: defence in depth. Every listed control must be absent or bypassed for the attempt to succeed; a single working control breaks this branch."},
+        {"id": "r1", "label": "Through an externally reachable interface or input channel", "gate": "NONE", "children": [],
+         "reason": "Generic reachability route (not from the record): network-facing or user-supplied input."},
+        {"id": "r2", "label": "Through data from an untrusted or compromised upstream source", "gate": "NONE", "children": [],
+         "reason": "Generic reachability route (not from the record): tainted data from another component."},
     ]
-    nodes.extend([
-        {"id": "r1", "label": "Through an externally reachable interface or input channel", "gate": "NONE", "children": []},
-        {"id": "r2", "label": "Through data from an untrusted or compromised upstream source", "gate": "NONE", "children": []},
-    ])
     nodes.extend(
-        {"id": f"c{i}", "label": label, "gate": "NONE", "children": []}
-        for i, label in enumerate(controls, start=1)
+        {"id": f"c{i}", "label": label, "gate": "NONE", "children": [], "reason": reason}
+        for i, (label, reason) in enumerate(controls, start=1)
     )
-    return FaultTreeSchema.model_validate({"root_id": "n1", "nodes": nodes})
+    return FaultTreeSchema.model_validate({"root_id": "n0", "nodes": nodes})
 
 
 def _generate_with_llm(record: CweRecordSchema) -> FaultTreeSchema:

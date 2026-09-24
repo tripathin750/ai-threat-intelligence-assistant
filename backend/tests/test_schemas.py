@@ -160,6 +160,25 @@ class FaultTreeSchemaTests(unittest.TestCase):
     def test_rejects_an_unreachable_node(self) -> None:
         self._assert_rejected(lambda d: d["nodes"].append(_node("orphan")), "not reachable")
 
+    def test_accepts_an_inhibit_gate_with_one_child_a_condition_and_reasons(self) -> None:
+        data = _valid_tree()
+        data["nodes"][4] = {**_node("b"), "reason": "why b matters"}
+        data["nodes"].append({**_node("gate", "INHIBIT", ["leaf"]), "condition": "only when enabled", "reason": "r"})
+        data["nodes"].append(_node("leaf"))
+        data["nodes"][0]["children"] = ["a", "b", "gate"]
+        tree = FaultTreeSchema.model_validate(data)
+        inhibit = next(node for node in tree.nodes if node.id == "gate")
+        self.assertEqual(inhibit.condition, "only when enabled")
+
+    def test_rejects_an_inhibit_gate_without_a_condition_or_with_two_children(self) -> None:
+        self._assert_rejected(
+            lambda d: d["nodes"][1].update(gate="INHIBIT", children=["a1"]), "needs a condition")
+        self._assert_rejected(
+            lambda d: d["nodes"][1].update(gate="INHIBIT", condition="c"), "exactly one child")
+
+    def test_rejects_a_condition_on_a_non_inhibit_gate(self) -> None:
+        self._assert_rejected(lambda d: d["nodes"][1].update(condition="c"), "only INHIBIT gates")
+
     def test_rejects_a_tree_that_is_too_deep(self) -> None:
         chain = [_node(f"g{i}", "AND", [f"g{i + 1}", f"leaf{i}"]) for i in range(6)]
         leaves = [_node(f"leaf{i}") for i in range(6)] + [_node("g6")]

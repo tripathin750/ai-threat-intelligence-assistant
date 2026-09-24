@@ -217,7 +217,7 @@ class ApiSmokeTests(unittest.TestCase):
         self.assertEqual(first.status_code, 200)
         body = first.json()
         self.assertEqual(body["cwe_id"], "CWE-77")
-        self.assertEqual(body["tree"]["root_id"], "n1")
+        self.assertEqual(body["tree"]["root_id"], "n0")
         self.assertIn("advisory", body["disclaimer"])
         # Second call is served from the cache: MITRE was only consulted once.
         self.assertEqual(second.status_code, 200)

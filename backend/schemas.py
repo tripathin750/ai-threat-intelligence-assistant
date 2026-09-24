@@ -288,9 +288,15 @@ class FaultTreeNodeSchema(BaseModel):
     id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,20}$")
     label: str = Field(min_length=1, max_length=240)
     # AND: the event occurs only if ALL children occur. OR: if ANY child
-    # occurs. NONE: a basic event (leaf) - a concrete, un-decomposed cause.
-    gate: Literal["AND", "OR", "NONE"]
+    # occurs. INHIBIT: the single child causes the event only when the
+    # conditioning event (`condition`) also holds. NONE: a basic event (leaf) -
+    # a concrete, un-decomposed cause.
+    gate: Literal["AND", "OR", "INHIBIT", "NONE"]
     children: list[str] = Field(default_factory=list, max_length=12)
+    # INHIBIT gates only: the enabling/conditioning event, drawn beside the gate.
+    condition: str | None = Field(default=None, min_length=1, max_length=240)
+    # Why this node (or gate) is in the tree - the rationale, tied to the CWE record.
+    reason: str | None = Field(default=None, min_length=1, max_length=400)
 
 
 class FaultTreeSchema(BaseModel):
@@ -319,8 +325,16 @@ class FaultTreeSchema(BaseModel):
         for node in self.nodes:
             if node.gate == "NONE" and node.children:
                 raise ValueError(f"basic event {node.id!r} must not have children")
-            if node.gate != "NONE" and len(node.children) < 2:
-                raise ValueError(f"{node.gate} gate {node.id!r} needs at least two children")
+            if node.gate == "INHIBIT":
+                if len(node.children) != 1:
+                    raise ValueError(f"INHIBIT gate {node.id!r} needs exactly one child")
+                if not node.condition:
+                    raise ValueError(f"INHIBIT gate {node.id!r} needs a condition")
+            else:
+                if node.condition:
+                    raise ValueError(f"only INHIBIT gates take a condition ({node.id!r})")
+                if node.gate != "NONE" and len(node.children) < 2:
+                    raise ValueError(f"{node.gate} gate {node.id!r} needs at least two children")
             if len(set(node.children)) != len(node.children):
                 raise ValueError(f"gate {node.id!r} lists the same child twice")
             for child in node.children:

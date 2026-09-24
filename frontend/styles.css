@@ -194,6 +194,13 @@ textarea { min-height: 40px; font-family: inherit; resize: vertical; }
 .ft-svg-gate-OR text { fill: var(--low); }
 .ft-svg-legend text { fill: var(--muted); }
 .ft-outline { margin-top: 10px; }
+.ft-reasons { margin: 8px 0 0; padding-left: 20px; }
+.ft-reasons li { margin: 8px 0; font-size: .84rem; }
+.ft-reason-cond { color: var(--low); font-size: .82rem; }
+.ft-svg-gate-INHIBIT path { fill: rgba(244, 224, 77, .12); stroke: var(--medium); }
+.ft-svg-gate-INHIBIT text { fill: var(--medium); font-size: 8px; }
+.ft-svg-cond ellipse { fill: #1a1a05; stroke: var(--medium); stroke-width: 1.5; stroke-dasharray: 5 3; }
+.ft-svg-cond text { font-size: 9.5px; }
 .ft-tree, .ft-tree ul { list-style: none; margin: 0; padding-left: 0; }
 .ft-tree ul { margin-left: 12px; padding-left: 16px; border-left: 1px solid var(--border-strong); }
 .ft-tree li { margin: 8px 0; }

@@ -205,9 +205,11 @@ function drawGateSymbol(gate, cx, top) {
   const { gateH: H, gateW: W } = FT;
   const shape = gate === "AND"
     ? `M ${-W} ${H} V ${W} A ${W} ${W} 0 0 1 ${W} ${W} V ${H} Z`
-    : `M ${-W} ${H} Q 0 ${H - 12} ${W} ${H} Q ${W * 0.95} ${H * 0.35} 0 0 Q ${-W * 0.95} ${H * 0.35} ${-W} ${H} Z`;
+    : gate === "INHIBIT"
+      ? `M ${-W * 0.6} 0 L ${W * 0.6} 0 L ${W} ${H / 2} L ${W * 0.6} ${H} L ${-W * 0.6} ${H} L ${-W} ${H / 2} Z`
+      : `M ${-W} ${H} Q 0 ${H - 12} ${W} ${H} Q ${W * 0.95} ${H * 0.35} 0 0 Q ${-W * 0.95} ${H * 0.35} ${-W} ${H} Z`;
   const group = svgEl("g", { transform: `translate(${cx} ${top})`, class: `ft-svg-gate ft-svg-gate-${gate}` });
-  group.append(svgEl("path", { d: shape }), svgEl("text", { x: 0, y: H * 0.62, "text-anchor": "middle" }, gate));
+  group.append(svgEl("path", { d: shape }), svgEl("text", { x: 0, y: gate === "INHIBIT" ? H * 0.58 : H * 0.62, "text-anchor": "middle" }, gate === "INHIBIT" ? "INH" : gate));
   return group;
 }
 
@@ -224,8 +226,9 @@ function renderFaultTreeDiagram(tree) {
     }
   })(tree.root_id, 0);
 
-  const width = FT.margin * 2 + FT.slot * leafIndex;
-  const legendH = 44;
+  const width = Math.max(FT.margin * 2 + FT.slot * leafIndex, 900);
+  const legendH = 74;
+  // Wide enough that the legend line is never clipped on narrow trees.
   const height = FT.margin * 2 + FT.pitch * maxDepth + FT.boxH + legendH;
   const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, width, height, role: "img", class: "ft-svg", "aria-label": "Fault tree diagram; a text outline follows" });
   const lines = svgEl("g", { class: "ft-svg-lines" }); const shapes = svgEl("g");
@@ -236,7 +239,9 @@ function renderFaultTreeDiagram(tree) {
     const { x, depth } = pos.get(node.id); const y = yOf(depth);
     const isLeaf = !node.children.length;
     const group = svgEl("g", { class: isLeaf ? "ft-svg-basic" : "ft-svg-event" });
-    group.append(svgEl("title", {}, node.label));
+    group.append(svgEl("title", {}, node.reason ? `${node.label}
+
+Why: ${node.reason}` : node.label));
     if (isLeaf) {
       group.append(svgEl("circle", { cx: x, cy: y + 11, r: 11 }));
       group.append(svgEl("rect", { x: x - FT.boxW / 2, y: y + 26, width: FT.boxW, height: FT.boxH - 26, rx: 4 }));
@@ -255,6 +260,18 @@ function renderFaultTreeDiagram(tree) {
       const gateTop = y + FT.boxH + FT.gapTop;
       lines.append(svgEl("line", { x1: x, y1: y + FT.boxH, x2: x, y2: gateTop }));
       shapes.append(drawGateSymbol(node.gate, x, gateTop));
+      if (node.gate === "INHIBIT" && node.condition) {
+        // Conditioning event: an ellipse beside the gate, joined to it by a horizontal line.
+        const cy = gateTop + FT.gateH / 2; const cx = x + FT.gateW + 8 + 68;
+        lines.append(svgEl("line", { x1: x + FT.gateW, y1: cy, x2: cx - 68, y2: cy }));
+        const cond = svgEl("g", { class: "ft-svg-cond" });
+        cond.append(svgEl("title", {}, `Condition: ${node.condition}`), svgEl("ellipse", { cx, cy, rx: 68, ry: 24 }));
+        const condLines = wrapLabel(node.condition, 20, 3);
+        const condText = svgEl("text", { x: cx, y: cy - (condLines.length - 1) * 5.5 + 3, "text-anchor": "middle" });
+        condLines.forEach((line, i) => condText.append(svgEl("tspan", { x: cx, dy: i === 0 ? 0 : 11 }, line)));
+        cond.append(condText);
+        shapes.append(cond);
+      }
       const busY = gateTop + FT.gateH + FT.gapBus;
       const xs = node.children.map((childId) => pos.get(childId).x);
       lines.append(svgEl("line", { x1: x, y1: gateTop + FT.gateH, x2: x, y2: busY }));
@@ -268,9 +285,29 @@ function renderFaultTreeDiagram(tree) {
   const legendBasic = svgEl("g", { class: "ft-svg-basic" }); legendBasic.append(svgEl("circle", { cx: FT.margin + 120, cy: ly - 2, r: 8 }));
   legend.append(legendEvent, svgEl("text", { x: FT.margin + 34, y: ly + 3 }, "Event"), legendBasic,
     svgEl("text", { x: FT.margin + 136, y: ly + 3 }, "Basic event"),
-    svgEl("text", { x: FT.margin + 250, y: ly + 3 }, "AND = all inputs required   OR = any one input suffices"));
+    svgEl("text", { x: FT.margin + 250, y: ly + 3 }, "AND = all inputs required    OR = any one input suffices"),
+    svgEl("text", { x: FT.margin, y: ly + 24 }, "INH (INHIBIT) = the single input causes the event only if the dashed oval condition also holds"));
   svg.append(legend);
   return svg;
+}
+
+function renderFaultTreeReasons(tree) {
+  const list = $("faulttree-reasons"); list.replaceChildren();
+  const nodesById = new Map(tree.nodes.map((node) => [node.id, node]));
+  (function walk(id) {
+    const node = nodesById.get(id);
+    if (node.reason || node.condition) {
+      const item = document.createElement("li");
+      const head = document.createElement("strong");
+      head.textContent = `${node.gate === "NONE" ? "Basic event" : node.gate}: ${node.label}`;
+      item.append(head);
+      if (node.condition) { const cond = document.createElement("div"); cond.className = "ft-reason-cond"; cond.textContent = `Condition: ${node.condition}`; item.append(cond); }
+      if (node.reason) { const why = document.createElement("div"); why.className = "secondary-text"; why.textContent = node.reason; item.append(why); }
+      list.append(item);
+    }
+    node.children.forEach(walk);
+  })(tree.root_id);
+  $("faulttree-reasoning").hidden = !list.children.length;
 }
 
 function resetFaultTree(cweId) {
@@ -279,6 +316,7 @@ function resetFaultTree(cweId) {
   section.dataset.cwe = cweId || "";
   $("faulttree-cwe").textContent = cweId ? `(${cweId})` : "";
   $("faulttree-diagram").replaceChildren();
+  $("faulttree-reasons").replaceChildren();
   $("faulttree-result").hidden = true;
   $("faulttree-refresh").hidden = true;
   $("faulttree-button").hidden = false;
@@ -299,6 +337,7 @@ async function loadFaultTree(refresh = false) {
     const nodesById = new Map(result.tree.nodes.map((node) => [node.id, node]));
     const tree = $("faulttree-tree"); tree.replaceChildren(renderFaultTreeNode(nodesById, result.tree.root_id));
     $("faulttree-diagram").replaceChildren(renderFaultTreeDiagram(result.tree));
+    renderFaultTreeReasons(result.tree);
     $("faulttree-source").textContent = `Source: ${result.source}`;
     $("faulttree-disclaimer").textContent = `${result.cwe_name}. ${result.disclaimer}`;
     $("faulttree-result").hidden = false;

@@ -69,8 +69,12 @@ class FaultTreeServiceTests(unittest.TestCase):
         labels = [node.label for node in tree.nodes]
 
         root = next(node for node in tree.nodes if node.id == tree.root_id)
-        self.assertEqual(root.gate, "AND")
+        self.assertEqual(root.gate, "INHIBIT")
+        self.assertTrue(root.condition)
         self.assertIn("Read Application Data", root.label)
+        gates = {node.gate for node in tree.nodes}
+        self.assertTrue({"AND", "OR", "INHIBIT", "NONE"} <= gates)
+        self.assertTrue(all(node.reason for node in tree.nodes), "every template node explains itself")
         self.assertTrue(any("Output Encoding" in label for label in labels))
         self.assertTrue(any("Input Validation" in label for label in labels))
 
