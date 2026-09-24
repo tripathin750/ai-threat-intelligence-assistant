@@ -146,6 +146,25 @@ class KevEntry(Base):
     synced_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
 
+class CweFaultTree(Base):
+    """A cached fault tree for one CWE (services/fault_tree_service.py).
+
+    Keyed by CWE id alone and independent of Vulnerability: a CWE is shared
+    by many CVEs, and a tree is about the weakness class, not any one CVE.
+    Cached because generating it costs an LLM call and a MITRE lookup, and a
+    weakness class's structure doesn't change between requests. New table,
+    so Base.metadata.create_all() adds it without touching existing ones.
+    """
+
+    __tablename__ = "cwe_fault_trees"
+
+    cwe_id = Column(String(20), primary_key=True)
+    cwe_name = Column(String(300), nullable=False)
+    source = Column(String(100), nullable=False)
+    tree = Column(JSON, nullable=False)
+    generated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
 class SyncState(Base):
     """Stores the last completed source synchronization for incremental NVD polling."""
 

@@ -21,6 +21,9 @@ flowchart TB
         MIT["Mitigation Engine\nservices/mitigation_service.py\n(rule-based fallback)"]
         Intel["Intelligence Service\nservices/intelligence_service.py\n(orchestrates + chooses LLM vs. fallback)"]
         Triage["Bulk Triage\nservices/triage_service.py\nKEV + CVSS + EPSS fused ranking"]
+        FT["CWE Fault Trees
+services/fault_tree_service.py
+LLM draft or template, validated, cached"]
         API["FastAPI routes\nmain.py"]
         Sec["Security middleware\nrate limit · API key · headers\nsecurity.py"]
     end
@@ -49,6 +52,10 @@ flowchart TB
     Triage -->|"per-batch, live"| EPSSAPI
     Triage -->|"reuses build_intelligence()"| Intel
     Triage --> API
+    FT -->|"CWE record, live"| MITRE
+    FT -->|"structured JSON, when enabled"| Gemini
+    FT --> DB
+    FT --> API
     DB --> API
     Sec -.->|"wraps every route"| API
     API -->|"JSON"| Dash

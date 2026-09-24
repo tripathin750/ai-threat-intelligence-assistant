@@ -146,10 +146,215 @@ function renderKevSection(kev) {
   ransomware.className = `badge ${kev.known_ransomware_use === "Known" ? "badge-CRITICAL" : "badge-neutral"}`;
 }
 
+// Fault tree (per CWE). Everything in the tree is LLM- or MITRE-derived text,
+// so it is rendered with textContent only - never innerHTML.
+function renderFaultTreeNode(nodesById, nodeId) {
+  const node = nodesById.get(nodeId);
+  const item = document.createElement("li");
+  const box = document.createElement("span");
+  box.className = `ft-node${node.gate === "NONE" ? " ft-leaf" : ""}`;
+  if (node.gate !== "NONE") {
+    const gate = document.createElement("span");
+    gate.className = `ft-gate ft-gate-${node.gate}`;
+    gate.textContent = node.gate;
+    box.append(gate);
+  }
+  const label = document.createElement("span");
+  label.textContent = node.label;
+  box.append(label);
+  item.append(box);
+  if (node.children.length) {
+    const list = document.createElement("ul");
+    for (const childId of node.children) list.append(renderFaultTreeNode(nodesById, childId));
+    item.append(list);
+  }
+  return item;
+}
+
+// ---- Fault-tree diagram (SVG) --------------------------------------------
+// Standard FTA notation: rectangle = event, circle = basic event (leaf),
+// AND / OR gate symbols between an event and its inputs. Built with
+// createElementNS + textContent only - labels are LLM/MITRE-derived.
+const SVG_NS = "http://www.w3.org/2000/svg";
+const FT = { slot: 200, boxW: 180, boxH: 76, gateH: 36, gateW: 24, gapTop: 16, gapBus: 14, gapBottom: 16, margin: 24 };
+FT.pitch = FT.boxH + FT.gapTop + FT.gateH + FT.gapBus + FT.gapBottom;
+
+function svgEl(name, attrs = {}, text) {
+  const el = document.createElementNS(SVG_NS, name);
+  for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, value);
+  if (text !== undefined) el.textContent = text;
+  return el;
+}
+
+function wrapLabel(text, maxChars, maxLines) {
+  const lines = []; let line = "";
+  for (const word of text.split(/\s+/)) {
+    if (word.length > maxChars) { // very long token: hard-split
+      if (line) { lines.push(line); line = ""; }
+      lines.push(word.slice(0, maxChars - 1) + "…"); continue;
+    }
+    if ((line + " " + word).trim().length > maxChars) { lines.push(line); line = word; }
+    else line = (line + " " + word).trim();
+  }
+  if (line) lines.push(line);
+  if (lines.length > maxLines) { lines.length = maxLines; lines[maxLines - 1] = lines[maxLines - 1].replace(/.?$/, "…"); }
+  return lines;
+}
+
+function drawGateSymbol(gate, cx, top) {
+  const { gateH: H, gateW: W } = FT;
+  const shape = gate === "AND"
+    ? `M ${-W} ${H} V ${W} A ${W} ${W} 0 0 1 ${W} ${W} V ${H} Z`
+    : gate === "INHIBIT"
+      ? `M ${-W * 0.6} 0 L ${W * 0.6} 0 L ${W} ${H / 2} L ${W * 0.6} ${H} L ${-W * 0.6} ${H} L ${-W} ${H / 2} Z`
+      : `M ${-W} ${H} Q 0 ${H - 12} ${W} ${H} Q ${W * 0.95} ${H * 0.35} 0 0 Q ${-W * 0.95} ${H * 0.35} ${-W} ${H} Z`;
+  const group = svgEl("g", { transform: `translate(${cx} ${top})`, class: `ft-svg-gate ft-svg-gate-${gate}` });
+  group.append(svgEl("path", { d: shape }), svgEl("text", { x: 0, y: gate === "INHIBIT" ? H * 0.58 : H * 0.62, "text-anchor": "middle" }, gate === "INHIBIT" ? "INH" : gate));
+  return group;
+}
+
+function renderFaultTreeDiagram(tree) {
+  const nodesById = new Map(tree.nodes.map((node) => [node.id, node]));
+  const pos = new Map(); let leafIndex = 0; let maxDepth = 0;
+  (function place(id, depth) {
+    const node = nodesById.get(id); maxDepth = Math.max(maxDepth, depth);
+    if (!node.children.length) pos.set(id, { x: FT.margin + FT.slot * leafIndex++ + FT.slot / 2, depth });
+    else {
+      node.children.forEach((childId) => place(childId, depth + 1));
+      const xs = node.children.map((childId) => pos.get(childId).x);
+      pos.set(id, { x: (Math.min(...xs) + Math.max(...xs)) / 2, depth });
+    }
+  })(tree.root_id, 0);
+
+  const width = Math.max(FT.margin * 2 + FT.slot * leafIndex, 900);
+  const legendH = 74;
+  // Wide enough that the legend line is never clipped on narrow trees.
+  const height = FT.margin * 2 + FT.pitch * maxDepth + FT.boxH + legendH;
+  const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, width, height, role: "img", class: "ft-svg", "aria-label": "Fault tree diagram; a text outline follows" });
+  const lines = svgEl("g", { class: "ft-svg-lines" }); const shapes = svgEl("g");
+  svg.append(lines, shapes);
+  const yOf = (depth) => FT.margin + depth * FT.pitch;
+
+  for (const node of tree.nodes) {
+    const { x, depth } = pos.get(node.id); const y = yOf(depth);
+    const isLeaf = !node.children.length;
+    const group = svgEl("g", { class: isLeaf ? "ft-svg-basic" : "ft-svg-event" });
+    group.append(svgEl("title", {}, node.reason ? `${node.label}
+
+Why: ${node.reason}` : node.label));
+    if (isLeaf) {
+      group.append(svgEl("circle", { cx: x, cy: y + 11, r: 11 }));
+      group.append(svgEl("rect", { x: x - FT.boxW / 2, y: y + 26, width: FT.boxW, height: FT.boxH - 26, rx: 4 }));
+    } else {
+      group.append(svgEl("rect", { x: x - FT.boxW / 2, y, width: FT.boxW, height: FT.boxH, rx: 4 }));
+    }
+    const textTop = isLeaf ? y + 26 : y;
+    const room = FT.boxH - (isLeaf ? 26 : 0);
+    const wrapped = wrapLabel(node.label, 26, Math.floor((room - 8) / 13));
+    const text = svgEl("text", { x, y: textTop + (room - wrapped.length * 13) / 2 + 10, "text-anchor": "middle" });
+    wrapped.forEach((line, i) => text.append(svgEl("tspan", { x, dy: i === 0 ? 0 : 13 }, line)));
+    group.append(text);
+    shapes.append(group);
+
+    if (!isLeaf) {
+      const gateTop = y + FT.boxH + FT.gapTop;
+      lines.append(svgEl("line", { x1: x, y1: y + FT.boxH, x2: x, y2: gateTop }));
+      shapes.append(drawGateSymbol(node.gate, x, gateTop));
+      if (node.gate === "INHIBIT" && node.condition) {
+        // Conditioning event: an ellipse beside the gate, joined to it by a horizontal line.
+        const cy = gateTop + FT.gateH / 2; const cx = x + FT.gateW + 8 + 68;
+        lines.append(svgEl("line", { x1: x + FT.gateW, y1: cy, x2: cx - 68, y2: cy }));
+        const cond = svgEl("g", { class: "ft-svg-cond" });
+        cond.append(svgEl("title", {}, `Condition: ${node.condition}`), svgEl("ellipse", { cx, cy, rx: 68, ry: 24 }));
+        const condLines = wrapLabel(node.condition, 20, 3);
+        const condText = svgEl("text", { x: cx, y: cy - (condLines.length - 1) * 5.5 + 3, "text-anchor": "middle" });
+        condLines.forEach((line, i) => condText.append(svgEl("tspan", { x: cx, dy: i === 0 ? 0 : 11 }, line)));
+        cond.append(condText);
+        shapes.append(cond);
+      }
+      const busY = gateTop + FT.gateH + FT.gapBus;
+      const xs = node.children.map((childId) => pos.get(childId).x);
+      lines.append(svgEl("line", { x1: x, y1: gateTop + FT.gateH, x2: x, y2: busY }));
+      lines.append(svgEl("line", { x1: Math.min(...xs, x), y1: busY, x2: Math.max(...xs, x), y2: busY }));
+      for (const childX of xs) lines.append(svgEl("line", { x1: childX, y1: busY, x2: childX, y2: yOf(depth + 1) }));
+    }
+  }
+
+  const ly = height - legendH + 14; const legend = svgEl("g", { class: "ft-svg-legend" });
+  const legendEvent = svgEl("g", { class: "ft-svg-event" }); legendEvent.append(svgEl("rect", { x: FT.margin, y: ly - 10, width: 26, height: 16, rx: 3 }));
+  const legendBasic = svgEl("g", { class: "ft-svg-basic" }); legendBasic.append(svgEl("circle", { cx: FT.margin + 120, cy: ly - 2, r: 8 }));
+  legend.append(legendEvent, svgEl("text", { x: FT.margin + 34, y: ly + 3 }, "Event"), legendBasic,
+    svgEl("text", { x: FT.margin + 136, y: ly + 3 }, "Basic event"),
+    svgEl("text", { x: FT.margin + 250, y: ly + 3 }, "AND = all inputs required    OR = any one input suffices"),
+    svgEl("text", { x: FT.margin, y: ly + 24 }, "INH (INHIBIT) = the single input causes the event only if the dashed oval condition also holds"));
+  svg.append(legend);
+  return svg;
+}
+
+function renderFaultTreeReasons(tree) {
+  const list = $("faulttree-reasons"); list.replaceChildren();
+  const nodesById = new Map(tree.nodes.map((node) => [node.id, node]));
+  (function walk(id) {
+    const node = nodesById.get(id);
+    if (node.reason || node.condition) {
+      const item = document.createElement("li");
+      const head = document.createElement("strong");
+      head.textContent = `${node.gate === "NONE" ? "Basic event" : node.gate}: ${node.label}`;
+      item.append(head);
+      if (node.condition) { const cond = document.createElement("div"); cond.className = "ft-reason-cond"; cond.textContent = `Condition: ${node.condition}`; item.append(cond); }
+      if (node.reason) { const why = document.createElement("div"); why.className = "secondary-text"; why.textContent = node.reason; item.append(why); }
+      list.append(item);
+    }
+    node.children.forEach(walk);
+  })(tree.root_id);
+  $("faulttree-reasoning").hidden = !list.children.length;
+}
+
+function resetFaultTree(cweId) {
+  const section = $("faulttree-section");
+  section.hidden = !cweId;
+  section.dataset.cwe = cweId || "";
+  $("faulttree-cwe").textContent = cweId ? `(${cweId})` : "";
+  $("faulttree-diagram").replaceChildren();
+  $("faulttree-reasons").replaceChildren();
+  $("faulttree-result").hidden = true;
+  $("faulttree-refresh").hidden = true;
+  $("faulttree-button").hidden = false;
+  $("faulttree-button").disabled = false;
+  $("faulttree-status").textContent = "";
+}
+
+async function loadFaultTree(refresh = false) {
+  const cweId = $("faulttree-section").dataset.cwe;
+  if (!cweId) return;
+  const button = $("faulttree-button"); const again = $("faulttree-refresh");
+  button.disabled = true; again.disabled = true;
+  $("faulttree-status").textContent = `Generating fault tree for ${cweId}… this can take up to a minute.`;
+  try {
+    const query = refresh ? "?refresh=true" : "";
+    const result = await api(`/cwe/${encodeURIComponent(cweId)}/fault-tree${query}`);
+    if ($("faulttree-section").dataset.cwe !== cweId) return; // user moved to another CVE meanwhile
+    const nodesById = new Map(result.tree.nodes.map((node) => [node.id, node]));
+    const tree = $("faulttree-tree"); tree.replaceChildren(renderFaultTreeNode(nodesById, result.tree.root_id));
+    $("faulttree-diagram").replaceChildren(renderFaultTreeDiagram(result.tree));
+    renderFaultTreeReasons(result.tree);
+    $("faulttree-source").textContent = `Source: ${result.source}`;
+    $("faulttree-disclaimer").textContent = `${result.cwe_name}. ${result.disclaimer}`;
+    $("faulttree-result").hidden = false;
+    $("faulttree-status").textContent = "";
+    button.hidden = true; again.hidden = false;
+  } catch (error) {
+    $("faulttree-status").textContent = error.message;
+  } finally {
+    button.disabled = false; again.disabled = false;
+  }
+}
+
 function renderIntelligence(data) {
   $("intelligence-empty").hidden = true;
   $("intelligence-content").hidden = false;
   renderKevSection(data.cve.kev);
+  resetFaultTree(data.cve.cwe_id);
   const summary = $("analysis-summary"); summary.replaceChildren();
   for (const point of splitIntoPoints(data.analysis.summary)) {
     const item = document.createElement("li"); item.textContent = point; summary.append(item);
@@ -418,6 +623,12 @@ $("search-button").addEventListener("click", () => { state.offset = 0; loadCves(
 $("search-input").addEventListener("keydown", (event) => { if (event.key === "Enter") { state.offset = 0; loadCves(); } });
 $("sync-button").addEventListener("click", syncCves);
 $("sync-kev-button").addEventListener("click", syncKev);
+$("faulttree-button").addEventListener("click", () => loadFaultTree(false));
+$("faulttree-refresh").addEventListener("click", () => loadFaultTree(true));
+$("faulttree-zoom").addEventListener("click", () => {
+  const actual = $("faulttree-diagram").classList.toggle("ft-actual-size");
+  $("faulttree-zoom").textContent = actual ? "Fit to panel" : "Actual size";
+});
 $("triage-toggle-button").addEventListener("click", () => {
   const panel = $("triage-panel");
   panel.hidden = !panel.hidden;
@@ -430,6 +641,42 @@ $("impact-rate-input").addEventListener("input", recomputeImpact);
 $("previous-button").addEventListener("click", () => { state.offset = Math.max(0, state.offset - state.limit); loadCves(); });
 $("next-button").addEventListener("click", () => { state.offset += state.limit; loadCves(); });
 initApiKeyField();
+initGlitchTitle();
 initMatrixRain();
 loadCves();
 loadImpactSummary();
+
+
+// Title effect: the heading "decrypts" from random matrix glyphs on load and
+// re-scrambles briefly every few seconds. The real text stays the accessible
+// name (aria-label); the scrambled frames are decoration only.
+function initGlitchTitle() {
+  const title = $("site-title");
+  if (!title) return;
+  const finalText = title.dataset.text;
+  title.setAttribute("aria-label", finalText);
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const glyphs = "01ABCDEF<>/|{}[]#$%&*+=";  // single-width only: wide glyphs would reflow the title
+  const textNode = document.createElement("span");
+  const cursor = document.createElement("span");
+  cursor.className = "cursor"; cursor.textContent = " ";
+  title.replaceChildren(textNode, cursor);
+  let timer = null;
+  function decode(duration = 1100) {
+    clearInterval(timer);
+    const start = performance.now();
+    timer = setInterval(() => {
+      const progress = Math.min(1, (performance.now() - start) / duration);
+      const settled = Math.floor(progress * finalText.length);
+      let out = "";
+      for (let i = 0; i < finalText.length; i++) {
+        out += i < settled || finalText[i] === " " ? finalText[i] : glyphs[Math.floor(Math.random() * glyphs.length)];
+      }
+      textNode.textContent = out;
+      title.dataset.text = out;
+      if (progress === 1) { clearInterval(timer); title.dataset.text = finalText; textNode.textContent = finalText; }
+    }, 40);
+  }
+  decode(1400);
+  setInterval(() => decode(500), 9000);
+}

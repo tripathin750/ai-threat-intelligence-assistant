@@ -4,7 +4,7 @@ from datetime import date, datetime
 import re
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 CVE_ID_PATTERN = re.compile(r"^CVE-\d{4}-\d{4,}$")
@@ -268,6 +268,110 @@ class ImpactSummarySchema(BaseModel):
     total_cves: int = Field(ge=0)
     analyzed_cves: int = Field(ge=0)
     kev_matches: int = Field(ge=0)
+
+
+FAULT_TREE_MAX_NODES = 30
+FAULT_TREE_MAX_DEPTH = 5
+
+
+class FaultTreeNodeSchema(BaseModel):
+    """One node of a fault tree, referring to its children by id.
+
+    Flat (id + child ids) rather than nested on purpose: it is the shape an
+    LLM's structured-output mode handles reliably, and it lets
+    FaultTreeSchema verify the structure explicitly instead of trusting
+    whatever nesting a model produced.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,20}$")
+    label: str = Field(min_length=1, max_length=240)
+    # AND: the event occurs only if ALL children occur. OR: if ANY child
+    # occurs. INHIBIT: the single child causes the event only when the
+    # conditioning event (`condition`) also holds. NONE: a basic event (leaf) -
+    # a concrete, un-decomposed cause.
+    gate: Literal["AND", "OR", "INHIBIT", "NONE"]
+    children: list[str] = Field(default_factory=list, max_length=12)
+    # INHIBIT gates only: the enabling/conditioning event, drawn beside the gate.
+    condition: str | None = Field(default=None, min_length=1, max_length=240)
+    # Why this node (or gate) is in the tree - the rationale, tied to the CWE record.
+    reason: str | None = Field(default=None, min_length=1, max_length=400)
+
+
+class FaultTreeSchema(BaseModel):
+    """A structurally valid fault tree: exactly one root, a real tree (no
+    cycles, no node shared between two parents, nothing unreachable), gates
+    that actually combine at least two causes, and leaves that are basic
+    events. Enforced here because the content may come from an LLM - a
+    hallucinated cycle or orphan node must be rejected before it is stored or
+    drawn, never silently rendered.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    root_id: str
+    nodes: list[FaultTreeNodeSchema] = Field(min_length=3, max_length=FAULT_TREE_MAX_NODES)
+
+    @model_validator(mode="after")
+    def validate_structure(self) -> "FaultTreeSchema":
+        by_id: dict[str, FaultTreeNodeSchema] = {}
+        for node in self.nodes:
+            if node.id in by_id:
+                raise ValueError(f"duplicate node id {node.id!r}")
+            by_id[node.id] = node
+        if self.root_id not in by_id:
+            raise ValueError("root_id does not refer to a node")
+        for node in self.nodes:
+            if node.gate == "NONE" and node.children:
+                raise ValueError(f"basic event {node.id!r} must not have children")
+            if node.gate == "INHIBIT":
+                if len(node.children) != 1:
+                    raise ValueError(f"INHIBIT gate {node.id!r} needs exactly one child")
+                if not node.condition:
+                    raise ValueError(f"INHIBIT gate {node.id!r} needs a condition")
+            else:
+                if node.condition:
+                    raise ValueError(f"only INHIBIT gates take a condition ({node.id!r})")
+                if node.gate != "NONE" and len(node.children) < 2:
+                    raise ValueError(f"{node.gate} gate {node.id!r} needs at least two children")
+            if len(set(node.children)) != len(node.children):
+                raise ValueError(f"gate {node.id!r} lists the same child twice")
+            for child in node.children:
+                if child not in by_id:
+                    raise ValueError(f"node {node.id!r} refers to unknown child {child!r}")
+        if by_id[self.root_id].gate == "NONE":
+            raise ValueError("the top event must be a gate, not a basic event")
+
+        seen: set[str] = set()
+        stack = [(self.root_id, 1)]
+        while stack:
+            node_id, depth = stack.pop()
+            if node_id in seen:
+                raise ValueError("a node is reachable by more than one path (cycle or shared child)")
+            if depth > FAULT_TREE_MAX_DEPTH:
+                raise ValueError(f"tree is deeper than {FAULT_TREE_MAX_DEPTH} levels")
+            seen.add(node_id)
+            stack.extend((child, depth + 1) for child in by_id[node_id].children)
+        if len(seen) != len(by_id):
+            raise ValueError("some nodes are not reachable from the top event")
+        return self
+
+
+class FaultTreeResponseSchema(BaseModel):
+    """The fault tree for one CWE plus where it came from."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    cwe_id: str = Field(pattern=r"^CWE-\d{1,5}$")
+    cwe_name: str
+    # "gemini:<model>" when the LLM produced it, otherwise the deterministic
+    # template built from MITRE's own record (suffixed "-fallback" when an
+    # LLM attempt was made and failed).
+    source: str
+    generated_at: datetime
+    tree: FaultTreeSchema
+    disclaimer: str
 
 
 class IntelligenceResponseSchema(BaseModel):

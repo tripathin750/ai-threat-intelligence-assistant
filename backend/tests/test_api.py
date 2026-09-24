@@ -200,6 +200,42 @@ class ApiSmokeTests(unittest.TestCase):
         self.assertGreaterEqual(summary["analyzed_cves"], 1)
         self.assertGreaterEqual(summary["kev_matches"], 0)
 
+    def test_cwe_fault_tree_endpoint_returns_a_validated_tree(self) -> None:
+        from backend.fetch_cwe import CweRecordSchema
+
+        record = CweRecordSchema(
+            cwe_id="CWE-77",
+            name="Command Injection",
+            description="The product builds a command from external input.",
+            consequences=["Impact: Execute Unauthorized Code or Commands"],
+            mitigations=["Input Validation: Use an allow-list."],
+        )
+        with patch("backend.services.fault_tree_service.fetch_cwe_record", return_value=record) as fetch:
+            first = self.client.get("/cwe/CWE-77/fault-tree")
+            second = self.client.get("/cwe/CWE-77/fault-tree")
+
+        self.assertEqual(first.status_code, 200)
+        body = first.json()
+        self.assertEqual(body["cwe_id"], "CWE-77")
+        self.assertEqual(body["tree"]["root_id"], "n0")
+        self.assertIn("advisory", body["disclaimer"])
+        # Second call is served from the cache: MITRE was only consulted once.
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(fetch.call_count, 1)
+
+    def test_cwe_fault_tree_endpoint_maps_upstream_errors(self) -> None:
+        from backend.fetch_cwe import CweNotFoundError, CweRequestError
+
+        with patch("backend.services.fault_tree_service.fetch_cwe_record", side_effect=CweNotFoundError("x")):
+            self.assertEqual(self.client.get("/cwe/CWE-99998/fault-tree").status_code, 404)
+        with patch("backend.services.fault_tree_service.fetch_cwe_record", side_effect=CweRequestError("x")):
+            self.assertEqual(self.client.get("/cwe/CWE-99997/fault-tree").status_code, 502)
+
+    def test_cwe_fault_tree_endpoint_rejects_a_malformed_id(self) -> None:
+        for bad in ("cwe-79", "CWE-", "CWE-1234567", "79"):
+            with self.subTest(cwe_id=bad):
+                self.assertEqual(self.client.get(f"/cwe/{bad}/fault-tree").status_code, 422)
+
     def test_attack_technique_catalog_is_searchable(self) -> None:
         results = self.client.get("/attack/techniques", params={"q": "T1190"}).json()
         self.assertTrue(any(item["technique_id"] == "T1190" for item in results))

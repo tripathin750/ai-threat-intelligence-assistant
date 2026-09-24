@@ -118,6 +118,29 @@ class AnalyseWithLLMTests(unittest.TestCase):
                 with self.assertRaises(LLMAnalysisError):
                     analyse_with_llm(_vulnerability())
 
+    def test_api_key_goes_in_a_header_and_never_in_the_url(self) -> None:
+        with patch.object(llm_service, "settings", _enabled_settings()):
+            with patch.object(
+                llm_service.requests, "post", return_value=_fake_gemini_response(VALID_MODEL_JSON)
+            ) as post:
+                analyse_with_llm(_vulnerability())
+
+        self.assertEqual(post.call_args.kwargs["headers"], {"x-goog-api-key": "test-key"})
+        self.assertNotIn("params", post.call_args.kwargs)
+        self.assertNotIn("test-key", post.call_args.args[0])
+
+    def test_error_messages_never_leak_the_key_or_url(self) -> None:
+        leaky = requests.ConnectionError(
+            "HTTPSConnectionPool: url: /v1beta/models/m:generateContent?key=test-key"
+        )
+        with patch.object(llm_service, "settings", _enabled_settings()):
+            with patch.object(llm_service.requests, "post", side_effect=leaky):
+                with self.assertRaises(LLMAnalysisError) as ctx:
+                    analyse_with_llm(_vulnerability())
+
+        self.assertNotIn("test-key", str(ctx.exception))
+        self.assertIsNone(ctx.exception.__cause__)
+
     def test_raises_on_an_unexpected_response_shape(self) -> None:
         with patch.object(llm_service, "settings", _enabled_settings()):
             fake = MagicMock()

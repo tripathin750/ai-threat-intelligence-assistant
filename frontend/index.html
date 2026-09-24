@@ -15,7 +15,7 @@
     <header class="site-header">
       <div>
         <p class="eyebrow">CYBER THREAT INTELLIGENCE</p>
-        <h1>AI Threat Intelligence Assistant</h1>
+        <h1 class="glitch" id="site-title" data-text="AI Threat Intelligence Assistant">AI Threat Intelligence Assistant</h1>
         <p class="subtitle">NVD-backed vulnerability intelligence with transparent ATT&amp;CK inference.</p>
       </div>
       <div class="header-actions">
@@ -149,6 +149,22 @@
               <h3>Recommended mitigations</h3>
               <p id="immediate-action"></p>
               <ul id="mitigation-list"></ul>
+            </section>
+            <section id="faulttree-section" hidden>
+              <h3>Fault tree <span id="faulttree-cwe" class="muted"></span></h3>
+              <p class="secondary-text">How this weakness gets successfully exploited: the top event, broken down by AND / OR gates into the conditions that must hold.</p>
+              <div class="chips">
+                <button id="faulttree-button" class="button button-secondary" type="button">Generate fault tree</button>
+                <button id="faulttree-refresh" class="button button-secondary" type="button" hidden>Regenerate</button>
+              </div>
+              <p id="faulttree-status" class="secondary-text" role="status"></p>
+              <div id="faulttree-result" hidden>
+                <div class="chips"><span id="faulttree-source" class="badge badge-neutral"></span><button id="faulttree-zoom" class="button button-secondary" type="button">Actual size</button></div>
+                <div id="faulttree-diagram" class="ft-diagram"></div>
+                <details id="faulttree-reasoning" class="ft-outline" open><summary>Reasoning: why each gate and event is here</summary><ol id="faulttree-reasons" class="ft-reasons"></ol></details>
+                <details class="ft-outline"><summary>Text outline</summary><ul id="faulttree-tree" class="ft-tree"></ul></details>
+                <p id="faulttree-disclaimer" class="secondary-text"></p>
+              </div>
             </section>
             <details>
               <summary>Evidence used</summary>

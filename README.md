@@ -20,7 +20,7 @@ PostgreSQL / SQLite  ◄──────────┘  (joined by cve_id)
    └──► Mitigation Engine   (severity + technique-aware recommendations)
    │
    ▼
-FastAPI  (/cves, /intelligence/{cve_id}, /attack/techniques, /kev/sync, /triage/batch, ...)
+FastAPI  (/cves, /intelligence/{cve_id}, /attack/techniques, /kev/sync, /triage/batch, /cwe/{id}/fault-tree, ...)
    │
    ▼
 Static dashboard (/dashboard/)
@@ -29,6 +29,16 @@ Static dashboard (/dashboard/)
 ## Cost & Time Impact — quantifying what automation actually saves
 
 The dashboard's **Cost & Time Impact** panel turns the pipeline's usage into a transparent estimate of analyst time and cost saved, instead of leaving that value implicit. It reads real counts from `GET /impact/summary` (CVEs tracked, how many have AI-generated intelligence, how many are CISA-confirmed exploited) and applies two *viewer-editable* assumptions — minutes of manual research avoided per CVE, and a fully-loaded hourly analyst cost — entirely client-side. Nothing here is a vendor quote or a fabricated organizational claim; the point is a defensible, adjustable methodology, not a number pretending to be more precise than it is.
+
+## Fault trees — from a weakness to the conditions that make it exploitable
+
+Every CVE carries a CWE (the weakness class). The dashboard's **Fault tree** panel (or `GET /cwe/{cwe_id}/fault-tree`) draws the classic Fault Tree Analysis view of that weakness: a top event ("this weakness is successfully exploited") broken down by **AND / OR gates** into the basic conditions that must hold.
+
+- **Grounded in MITRE's own record.** The CWE's description, common consequences and potential mitigations are fetched live from MITRE's CWE REST API and handed to the model as a delimited data block, never as instructions.
+- **Works for any CWE.** When `ENABLE_LLM_ANALYSIS` and `GEMINI_API_KEY` are both set, Gemini drafts the tree; otherwise (or on any failure) a deterministic template built from the same MITRE record is used. The `source` field says which produced it.
+- **Validated, not trusted.** The response must be a real tree: unique ids, no cycles or shared children, gates with at least two children, bounded depth and size. Anything else is discarded in favour of the template.
+- **A real diagram.** The dashboard draws standard FTA notation in SVG: rectangles for events, circles for basic events, and AND / OR / **INHIBIT** gate symbols (an INHIBIT gate has one input plus a dashed-oval conditioning event that must also hold), with a text outline underneath for accessibility. Every node carries a **reason**, shown in a "Reasoning" list and as a hover tooltip, explaining why that gate or event is in the tree and how it ties to the CWE record.
+- **Advisory.** Trees are analytical aids, not authoritative facts; each response carries a disclaimer. Results are cached per CWE.
 
 ## Bulk Triage — for SOC analysts working a queue, not one CVE
 
@@ -162,6 +172,7 @@ Change the password/host/db name there if your local setup differs.
 | `GET /cves/{cve_id}` | Fetch one stored CVE, with `kev` status if applicable |
 | `POST /kev/sync` | Refresh the full CISA Known Exploited Vulnerabilities catalogue |
 | `POST /triage/batch` | Sync-if-needed, analyse, and urgency-rank up to 50 pasted CVE IDs (SOC bulk triage, KEV+CVSS+EPSS fused) |
+| `GET /cwe/{cwe_id}/fault-tree` | Fault tree (AND/OR gates) for any CWE: MITRE-record-grounded, Gemini-drafted when enabled, deterministic template otherwise; cached per CWE, `?refresh=true` regenerates |
 | `GET /impact/summary` | Aggregate counts backing the Cost & Time Impact panel |
 | `POST /intelligence/{cve_id}/analyze` | Generate/refresh the full intelligence view |
 | `GET /intelligence/{cve_id}` | Read the persisted intelligence view |

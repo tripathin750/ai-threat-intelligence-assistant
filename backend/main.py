@@ -18,11 +18,13 @@ from sqlalchemy.orm import Session, joinedload
 from .config import settings
 from .database import SessionLocal, get_db, init_db
 from .fetch_cves import NVDRequestError, VulnerabilityValidationError, fetch_latest_cves, normalize_cve
+from .fetch_cwe import CweNotFoundError, CweRequestError
 from .fetch_kev import KevRequestError
 from .logging_config import configure_logging
 from .models import AttackTechnique, IntelligenceAnalysis, KevEntry, Vulnerability
 from .schemas import (
     AttackTechniqueSchema,
+    FaultTreeResponseSchema,
     ImpactSummarySchema,
     IntelligenceResponseSchema,
     KevSyncResultSchema,
@@ -36,6 +38,7 @@ from .schemas import (
 )
 from .security import RateLimitMiddleware, SecurityHeadersMiddleware, verify_api_key
 from .services.attack_service import seed_attack_catalog
+from .services.fault_tree_service import get_fault_tree
 from .services.ingestion_service import synchronize_nvd
 from .services.intelligence_service import build_intelligence
 from .services.kev_service import synchronize_kev
@@ -225,6 +228,29 @@ def get_impact_summary(db: Session = Depends(get_db)) -> ImpactSummarySchema:
         analyzed_cves=db.query(func.count(IntelligenceAnalysis.cve_id)).scalar() or 0,
         kev_matches=db.query(func.count(KevEntry.cve_id)).scalar() or 0,
     )
+
+
+@app.get(
+    "/cwe/{cwe_id}/fault-tree",
+    response_model=FaultTreeResponseSchema,
+    dependencies=[Depends(verify_api_key)],
+)
+def get_cwe_fault_tree(
+    cwe_id: str = ApiPath(pattern=r"^CWE-\d{1,5}$"),
+    refresh: bool = Query(default=False),
+    db: Session = Depends(get_db),
+) -> FaultTreeResponseSchema:
+    """Return (generating and caching on first use) the fault tree for a CWE.
+
+    Grounded in MITRE's official CWE record; produced by Gemini when enabled
+    and by a deterministic template otherwise - see services/fault_tree_service.py.
+    """
+    try:
+        return get_fault_tree(db, cwe_id, refresh=refresh)
+    except CweNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="CWE not found in the MITRE catalogue.") from exc
+    except CweRequestError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="The MITRE CWE catalogue is unavailable.") from exc
 
 
 @app.get("/attack/techniques", response_model=list[AttackTechniqueSchema], dependencies=[Depends(verify_api_key)])
