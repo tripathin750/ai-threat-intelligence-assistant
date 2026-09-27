@@ -23,6 +23,10 @@ class NVDRequestError(RuntimeError):
     """Raised when the NVD API cannot be queried successfully."""
 
 
+class CveNotFoundError(NVDRequestError):
+    """Raised when NVD has no record for the requested CVE ID."""
+
+
 class VulnerabilityValidationError(ValueError):
     """Raised when a normalized record is unsafe to store."""
 

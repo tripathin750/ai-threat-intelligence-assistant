@@ -144,5 +144,90 @@ class IngestionServiceTests(unittest.TestCase):
         self.assertIsNotNone(state.last_successful_sync)
 
 
+class GetOrFetchVulnerabilityTests(unittest.TestCase):
+    """get_or_fetch_vulnerability() is the on-demand escape hatch for CVEs the
+    rolling sync's 120-day window never covers (see GET /cves/{cve_id}/lookup).
+    """
+
+    def setUp(self) -> None:
+        self.engine = create_engine(
+            "sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool
+        )
+        Base.metadata.create_all(bind=self.engine)
+        self.db = sessionmaker(bind=self.engine)()
+
+    def tearDown(self) -> None:
+        self.db.close()
+        self.engine.dispose()
+
+    def test_an_already_stored_cve_is_returned_without_calling_nvd(self) -> None:
+        self.db.add(Vulnerability(**normalize_cve_for_test(_cve("CVE-1999-0001"))))
+        self.db.commit()
+
+        with patch.object(ingestion_service, "fetch_cve_by_id") as fetch:
+            result = ingestion_service.get_or_fetch_vulnerability(self.db, "cve-1999-0001")
+
+        fetch.assert_not_called()
+        self.assertEqual(result.cve_id, "CVE-1999-0001")
+
+    def test_an_old_cve_not_yet_synced_is_fetched_from_nvd_and_stored(self) -> None:
+        with patch.object(
+            ingestion_service, "fetch_cve_by_id", return_value=_nvd_payload(_cve("CVE-2001-0002"))
+        ) as fetch:
+            result = ingestion_service.get_or_fetch_vulnerability(self.db, "CVE-2001-0002")
+
+        fetch.assert_called_once_with("CVE-2001-0002")
+        self.assertEqual(result.cve_id, "CVE-2001-0002")
+        self.assertIsNotNone(self.db.get(Vulnerability, "CVE-2001-0002"))
+
+    def test_a_second_call_is_served_from_the_database_not_fetched_again(self) -> None:
+        with patch.object(
+            ingestion_service, "fetch_cve_by_id", return_value=_nvd_payload(_cve("CVE-2001-0003"))
+        ) as fetch:
+            ingestion_service.get_or_fetch_vulnerability(self.db, "CVE-2001-0003")
+            ingestion_service.get_or_fetch_vulnerability(self.db, "CVE-2001-0003")
+
+        self.assertEqual(fetch.call_count, 1)
+
+    def test_an_id_nvd_has_never_heard_of_raises_not_found_and_stores_nothing(self) -> None:
+        with patch.object(ingestion_service, "fetch_cve_by_id", return_value=None):
+            with self.assertRaises(ingestion_service.CveNotFoundError):
+                ingestion_service.get_or_fetch_vulnerability(self.db, "CVE-2099-99999")
+
+        self.assertEqual(self.db.query(Vulnerability).count(), 0)
+
+    def test_an_nvd_outage_propagates_and_stores_nothing(self) -> None:
+        with patch.object(
+            ingestion_service, "fetch_cve_by_id", side_effect=ingestion_service.NVDRequestError("down")
+        ):
+            with self.assertRaises(ingestion_service.NVDRequestError):
+                ingestion_service.get_or_fetch_vulnerability(self.db, "CVE-2001-0004")
+
+        self.assertEqual(self.db.query(Vulnerability).count(), 0)
+
+    def test_an_unrecognisable_response_shape_raises_and_stores_nothing(self) -> None:
+        with patch.object(ingestion_service, "fetch_cve_by_id", return_value={"vulnerabilities": ["not-a-dict"]}):
+            with self.assertRaises(ingestion_service.NVDRequestError):
+                ingestion_service.get_or_fetch_vulnerability(self.db, "CVE-2001-0005")
+
+        self.assertEqual(self.db.query(Vulnerability).count(), 0)
+
+    def test_a_record_failing_validation_raises_and_stores_nothing(self) -> None:
+        bad_cve = _cve("CVE-2001-0006")
+        bad_cve["descriptions"] = []  # normalize_cve falls back to a placeholder, not a failure -
+        bad_cve["id"] = "not-a-cve-id"  # this is what actually fails VulnerabilitySchema's pattern
+        with patch.object(ingestion_service, "fetch_cve_by_id", return_value=_nvd_payload(bad_cve)):
+            with self.assertRaises(ingestion_service.VulnerabilityValidationError):
+                ingestion_service.get_or_fetch_vulnerability(self.db, "CVE-2001-0006")
+
+        self.assertEqual(self.db.query(Vulnerability).count(), 0)
+
+
+def normalize_cve_for_test(cve: dict) -> dict:
+    from backend.fetch_cves import normalize_cve
+
+    return normalize_cve(cve)
+
+
 if __name__ == "__main__":
     unittest.main()
