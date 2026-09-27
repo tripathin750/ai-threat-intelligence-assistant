@@ -124,6 +124,55 @@ class ApiSmokeTests(unittest.TestCase):
         response = self.client.get("/cves/DROP TABLE vulnerabilities")
         self.assertEqual(response.status_code, 422)
 
+    def test_lookup_fetches_an_old_unsynced_cve_from_nvd_and_stores_it(self) -> None:
+        """GET /cves/{cve_id}/lookup is the escape hatch for a CVE the rolling
+        sync's 120-day window never covers - it must fetch it from NVD
+        directly (mocked here) rather than 404 the way GET /cves/{id} does."""
+        payload = {
+            "vulnerabilities": [
+                {
+                    "cve": {
+                        "id": "CVE-2003-0001",
+                        "descriptions": [{"lang": "en", "value": "A very old, already-fixed vulnerability."}],
+                        "metrics": {},
+                        "published": "2003-01-15T00:00:00.000Z",
+                        "lastModified": "2003-01-20T00:00:00.000Z",
+                    }
+                }
+            ]
+        }
+        with patch("backend.services.ingestion_service.fetch_cve_by_id", return_value=payload) as fetch:
+            first = self.client.get("/cves/CVE-2003-0001/lookup")
+            second = self.client.get("/cves/CVE-2003-0001/lookup")
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(first.json()["cve_id"], "CVE-2003-0001")
+        self.assertEqual(second.status_code, 200)
+        fetch.assert_called_once()  # the second call was served from the database
+
+        # Now stored locally like any synced CVE: the plain GET also finds it.
+        self.assertEqual(self.client.get("/cves/CVE-2003-0001").status_code, 200)
+
+    def test_lookup_404s_for_an_id_nvd_has_never_heard_of(self) -> None:
+        with patch("backend.services.ingestion_service.fetch_cve_by_id", return_value=None):
+            response = self.client.get("/cves/CVE-2099-88888/lookup")
+        self.assertEqual(response.status_code, 404)
+
+    def test_lookup_maps_an_nvd_outage_to_502(self) -> None:
+        from backend.fetch_cves import NVDRequestError
+
+        with patch(
+            "backend.services.ingestion_service.fetch_cve_by_id", side_effect=NVDRequestError("down")
+        ):
+            response = self.client.get("/cves/CVE-2010-77777/lookup")
+        self.assertEqual(response.status_code, 502)
+
+    def test_lookup_rejects_a_malformed_id_before_touching_nvd(self) -> None:
+        with patch("backend.services.ingestion_service.fetch_cve_by_id") as fetch:
+            response = self.client.get("/cves/not-a-cve-id/lookup")
+        self.assertEqual(response.status_code, 422)
+        fetch.assert_not_called()
+
     def test_full_intelligence_pipeline_end_to_end(self) -> None:
         """Regression test for the stale-relationship-cache bug fixed in
         services/intelligence_service.py: the very first analyze call for a

@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from .config import settings
 from .database import SessionLocal, get_db, init_db
-from .fetch_cves import NVDRequestError, VulnerabilityValidationError, fetch_latest_cves, normalize_cve
+from .fetch_cves import CveNotFoundError, NVDRequestError, VulnerabilityValidationError, fetch_latest_cves, normalize_cve
 from .fetch_cwe import CweNotFoundError, CweRequestError
 from .fetch_kev import KevRequestError
 from .logging_config import configure_logging
@@ -39,7 +39,7 @@ from .schemas import (
 from .security import RateLimitMiddleware, SecurityHeadersMiddleware, verify_api_key
 from .services.attack_service import seed_attack_catalog
 from .services.fault_tree_service import claim_upgrade, get_fault_tree, upgrade_fault_tree
-from .services.ingestion_service import synchronize_nvd
+from .services.ingestion_service import get_or_fetch_vulnerability, synchronize_nvd
 from .services.intelligence_service import build_intelligence
 from .services.kev_service import synchronize_kev
 from .services.scheduler import NvdSyncScheduler
@@ -195,6 +195,33 @@ def get_cve(
     cve_id: str = ApiPath(pattern=CVE_ID_PATTERN), db: Session = Depends(get_db)
 ) -> VulnerabilityWithKevSchema:
     vulnerability = _get_vulnerability_or_404(db, cve_id)
+    return VulnerabilityWithKevSchema.model_validate(vulnerability)
+
+
+@app.get("/cves/{cve_id}/lookup", response_model=VulnerabilityWithKevSchema, dependencies=[Depends(verify_api_key)])
+def lookup_cve(
+    cve_id: str = ApiPath(pattern=CVE_ID_PATTERN), db: Session = Depends(get_db)
+) -> VulnerabilityWithKevSchema:
+    """Fetch any CVE directly from NVD by ID, old or new, storing it locally on first fetch.
+
+    Unlike GET /cves/{cve_id} (local database only, 404 if never synced),
+    this always falls through to NVD when the CVE isn't already stored. The
+    rolling sync (POST /cves/sync) only ever covers recently *modified* CVEs
+    - NVD caps a date-range query at 120 days - so an older, untouched CVE
+    ID would otherwise 404 here forever even though NVD has always had it.
+    Once fetched, /intelligence/{cve_id}, search, and triage all find it
+    locally afterwards without fetching it again.
+    """
+    try:
+        vulnerability = get_or_fetch_vulnerability(db, cve_id)
+    except CveNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="NVD has no record for this CVE ID.") from exc
+    except NVDRequestError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="NVD is unavailable.") from exc
+    except VulnerabilityValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail="NVD returned an invalid record for this CVE."
+        ) from exc
     return VulnerabilityWithKevSchema.model_validate(vulnerability)
 
 

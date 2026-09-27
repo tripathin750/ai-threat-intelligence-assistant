@@ -33,7 +33,33 @@ def _record(**overrides: object) -> CweRecordSchema:
     return CweRecordSchema(**data)
 
 
+def _full_tree_dict() -> dict:
+    """A realistic full tree: 16 nodes, 10 basic events, 4 levels, AND + OR gates."""
+    def gate(node_id: str, kind: str, children: list[str]) -> dict:
+        return {"id": node_id, "label": f"event {node_id}", "gate": kind, "children": children}
+
+    def leaf(node_id: str) -> dict:
+        return {"id": node_id, "label": f"cause {node_id}", "gate": "NONE", "children": []}
+
+    return {
+        "root_id": "n1",
+        "nodes": [
+            gate("n1", "AND", ["n2", "n3", "n4"]),
+            gate("n2", "OR", ["l1", "l2", "l3"]),
+            gate("n3", "AND", ["l4", "l5", "n6"]),
+            gate("n6", "OR", ["l9", "l10"]),
+            gate("n4", "OR", ["n5", "l6"]),
+            gate("n5", "AND", ["l7", "l8"]),
+            *[leaf(f"l{i}") for i in range(1, 11)],
+        ],
+    }
+
+
 def _llm_tree_json() -> str:
+    return json.dumps(_full_tree_dict())
+
+
+def _thin_tree_json() -> str:
     return json.dumps({
         "root_id": "n1",
         "nodes": [
@@ -100,7 +126,73 @@ class FaultTreeServiceTests(unittest.TestCase):
             result = fault_tree_service.get_fault_tree(self.db, "CWE-79")
 
         self.assertTrue(result.source.startswith("gemini:"))
-        self.assertEqual([node.id for node in result.tree.nodes], ["n1", "n2", "n3"])
+        self.assertEqual(len(result.tree.nodes), 16)
+
+    def test_a_thin_gemini_tree_is_retried_once_with_the_shortfall_named(self) -> None:
+        with patch.object(fault_tree_service, "settings", _enabled()),              patch.object(fault_tree_service, "fetch_cwe_record", return_value=_record()),              patch.object(fault_tree_service, "call_gemini_json", side_effect=[_thin_tree_json(), _llm_tree_json()]) as gemini:
+            result = fault_tree_service.get_fault_tree(self.db, "CWE-79")
+
+        self.assertEqual(gemini.call_count, 2)
+        second_user_prompt = gemini.call_args_list[1].args[1]
+        self.assertIn("too thin", second_user_prompt)
+        self.assertIn("only 3 nodes", second_user_prompt)
+        self.assertTrue(result.source.startswith("gemini:"))
+        self.assertEqual(len(result.tree.nodes), 16)
+
+    def test_a_tree_that_is_still_thin_after_the_retry_falls_back_to_the_template(self) -> None:
+        with patch.object(fault_tree_service, "settings", _enabled()),              patch.object(fault_tree_service, "fetch_cwe_record", return_value=_record()),              patch.object(fault_tree_service, "call_gemini_json", return_value=_thin_tree_json()) as gemini:
+            result = fault_tree_service.get_fault_tree(self.db, "CWE-79")
+
+        self.assertEqual(gemini.call_count, 2, "exactly one retry, never a loop")
+        self.assertEqual(result.source, f"{fault_tree_service.TEMPLATE_SOURCE}-fallback")
+
+    def _acceptable_tree_json(self, extra_leaves: int) -> str:
+        """Valid, clears the MIN bar (12 nodes) but not the TARGET bar (16)."""
+        data = _full_tree_dict()
+        drop = {"l9", "l10", "n6"}
+        data["nodes"] = [n for n in data["nodes"] if n["id"] not in drop]
+        data["nodes"][2]["children"] = ["l4", "l5"]  # n3 no longer points at n6
+        for i in range(extra_leaves):
+            data["nodes"].append({"id": f"x{i}", "label": f"extra {i}", "gate": "NONE", "children": []})
+            data["nodes"][1]["children"].append(f"x{i}")
+        return json.dumps(data)
+
+    def test_a_tree_between_the_min_and_target_bars_is_expanded_once_then_accepted(self) -> None:
+        good_enough = self._acceptable_tree_json(0)  # 13 nodes
+        with patch.object(fault_tree_service, "settings", _enabled()),              patch.object(fault_tree_service, "fetch_cwe_record", return_value=_record()),              patch.object(fault_tree_service, "call_gemini_json", return_value=good_enough) as gemini:
+            result = fault_tree_service.get_fault_tree(self.db, "CWE-79")
+
+        self.assertEqual(gemini.call_count, 2, "asked to expand once, never more")
+        self.assertIn("previous_tree", gemini.call_args_list[1].args[1], "the retry shows Gemini its own tree")
+        self.assertTrue(result.source.startswith("gemini:"), "still preferred over the template")
+
+    def test_the_larger_of_two_acceptable_attempts_wins(self) -> None:
+        bigger, smaller = self._acceptable_tree_json(2), self._acceptable_tree_json(0)
+        with patch.object(fault_tree_service, "settings", _enabled()),              patch.object(fault_tree_service, "fetch_cwe_record", return_value=_record()),              patch.object(fault_tree_service, "call_gemini_json", side_effect=[bigger, smaller]):
+            result = fault_tree_service.get_fault_tree(self.db, "CWE-79")
+
+        self.assertEqual(len(result.tree.nodes), 15)
+
+    def test_shortfall_flags_thin_flat_or_gateless_trees_and_passes_a_full_one(self) -> None:
+        from backend.schemas import FaultTreeSchema
+
+        full = FaultTreeSchema.model_validate(_full_tree_dict())
+        self.assertIsNone(fault_tree_service._shortfall(full))
+
+        no_or = _full_tree_dict()
+        for node in no_or["nodes"]:
+            if node["gate"] == "OR":
+                node["gate"] = "AND"
+        self.assertIn("no OR gate", fault_tree_service._shortfall(FaultTreeSchema.model_validate(no_or)))
+
+        thin = FaultTreeSchema.model_validate_json(_thin_tree_json())
+        problem = fault_tree_service._shortfall(thin)
+        self.assertIn("only 3 nodes", problem)
+        self.assertIn("basic events", problem)
+
+    def test_the_prompt_demands_a_full_tree(self) -> None:
+        self.assertIn("FULL", fault_tree_service.SYSTEM_PROMPT)
+        self.assertIn("18 to 24 nodes", fault_tree_service.SYSTEM_PROMPT)
 
     def test_the_prompt_puts_mitre_text_in_a_data_block(self) -> None:
         with patch.object(fault_tree_service, "settings", _enabled()), \

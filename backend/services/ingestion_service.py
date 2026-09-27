@@ -8,7 +8,14 @@ from typing import Any
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from ..fetch_cves import VulnerabilityValidationError, fetch_modified_cves, normalize_cve
+from ..fetch_cves import (
+    CveNotFoundError,
+    NVDRequestError,
+    VulnerabilityValidationError,
+    fetch_cve_by_id,
+    fetch_modified_cves,
+    normalize_cve,
+)
 from ..models import SyncState, Vulnerability
 from ..schemas import SyncResultSchema
 
@@ -85,3 +92,50 @@ def synchronize_nvd(db: Session, limit: int = 100) -> SyncResultSchema:
         created=created,
         updated=updated,
     )
+
+
+def get_or_fetch_vulnerability(db: Session, cve_id: str) -> Vulnerability:
+    """Return a CVE from the local database, fetching it from NVD directly on first use.
+
+    synchronize_nvd() only ever covers recently *modified* CVEs - NVD caps a
+    date-range search at a 120-day window, so a CVE published or last
+    touched years ago is never picked up by the rolling sync, no matter how
+    long it runs. fetch_cve_by_id() takes no date filter at all, so any
+    single, well-formed CVE ID can still be fetched directly; this is the
+    on-demand escape hatch for exactly that case (the same one
+    services/triage_service.py already uses per row of a pasted batch).
+
+    Once fetched, the CVE is stored like any other synced record, so
+    /intelligence/{cve_id}, search, and future triage batches all find it
+    locally afterwards without fetching it again.
+
+    Raises fetch_cves.CveNotFoundError when NVD has no record for the ID,
+    NVDRequestError when NVD cannot be reached or returns something we
+    don't recognise, and VulnerabilityValidationError when NVD's own record
+    fails this project's validation - never silently drops or fabricates data.
+    """
+    cve_id = cve_id.upper()
+    vulnerability = db.get(Vulnerability, cve_id)
+    if vulnerability is not None:
+        return vulnerability
+
+    payload = fetch_cve_by_id(cve_id)
+    if payload is None:
+        raise CveNotFoundError(f"{cve_id} was not found in the NVD database.")
+    raw = next(
+        (item.get("cve") for item in payload.get("vulnerabilities", []) if isinstance(item, dict)),
+        None,
+    )
+    if not isinstance(raw, dict):
+        raise NVDRequestError("NVD returned an unexpected response shape.")
+    record = normalize_cve(raw)  # raises VulnerabilityValidationError on failure
+
+    vulnerability = Vulnerability(**record)
+    db.add(vulnerability)
+    try:
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        logger.exception("Failed to store a directly-fetched NVD record for %s", cve_id)
+        raise
+    return vulnerability

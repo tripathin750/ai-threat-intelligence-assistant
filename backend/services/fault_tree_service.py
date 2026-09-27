@@ -42,7 +42,7 @@ LLM_TIMEOUT_SECONDS = 25
 # The background upgrade is not bound by a proxy timeout - nobody is waiting on
 # it - so it can afford to sit through a slow free-tier Gemini response.
 LLM_BACKGROUND_TIMEOUT_SECONDS = 90
-MAX_OUTPUT_TOKENS = 3072
+MAX_OUTPUT_TOKENS = 4096
 # A template tree cached because Gemini failed is only trusted this long: after
 # that (with the LLM enabled) the next request retries Gemini, so one transient
 # outage never pins a CWE to the template. The window also stops a Gemini
@@ -98,7 +98,17 @@ Rules you must follow:
   Use INHIBIT where an event needs a qualifying circumstance, and use
   genuine OR gates where several independent routes exist - do not make
   every gate an AND. Every leaf has gate "NONE" and an empty children list.
-  Use 8 to 18 nodes in total and at most 4 levels deep.
+- Make the tree FULL, not a sketch: 18 to 24 nodes in total (fewer than 12
+  is rejected), 4 or 5 levels deep (the top event is level 1), at least 10
+  basic events (leaves), and at least two OR gates. Do not stop at two
+  levels: every intermediate event under the top event must itself be
+  decomposed further by its own gate.
+  A good shape is: the top event (INHIBIT or AND) -> 3 or 4 intermediate
+  events (for example: the weakness is present, the attacker can reach or
+  supply the input, existing defences fail, the consequence is realised) ->
+  each decomposed into 2 to 4 more specific causes -> basic events at the
+  bottom. Cover EACH listed consequence and EACH listed mitigation
+  somewhere in the tree (a bypassed or missing mitigation is a basic event).
 - Give every node a "reason": one or two sentences saying why it is in the
   tree, tied to the record (its description, consequences or mitigations).
 - It must be a true tree: exactly one node is the root; every other node has
@@ -207,18 +217,85 @@ def build_template_tree(record: CweRecordSchema) -> FaultTreeSchema:
     return FaultTreeSchema.model_validate({"root_id": "n0", "nodes": nodes})
 
 
+# A Gemini tree must be genuinely fuller than the template to be worth showing
+# instead of it. The schema only guarantees a valid tree (3+ nodes); these are
+# the "is this a real analysis" thresholds, checked on top of it.
+# Two bars: TARGET is what a first attempt is asked to reach (below it, Gemini is
+# shown its own tree and told to expand it); MIN is what is still accepted after
+# that retry - a valid, grounded 12-node Gemini tree beats the template.
+TARGET_LLM_NODES = 16
+TARGET_LLM_LEAVES = 9
+MIN_LLM_NODES = 12
+MIN_LLM_LEAVES = 6
+MIN_LLM_DEPTH = 3
+
+
+def _depth(tree: FaultTreeSchema) -> int:
+    by_id = {node.id: node for node in tree.nodes}
+
+    def walk(node_id: str) -> int:
+        children = by_id[node_id].children
+        return 1 + (max(walk(child) for child in children) if children else 0)
+
+    return walk(tree.root_id)
+
+
+def _shortfall(
+    tree: FaultTreeSchema, min_nodes: int = MIN_LLM_NODES, min_leaves: int = MIN_LLM_LEAVES
+) -> str | None:
+    """Why a valid tree is still too thin, or None when it is full enough."""
+    leaves = sum(1 for node in tree.nodes if node.gate == "NONE")
+    problems = []
+    if len(tree.nodes) < min_nodes:
+        problems.append(f"only {len(tree.nodes)} nodes (need at least {min_nodes})")
+    if leaves < min_leaves:
+        problems.append(f"only {leaves} basic events (need at least {min_leaves})")
+    if _depth(tree) < MIN_LLM_DEPTH:
+        problems.append(f"only {_depth(tree)} levels deep (need at least {MIN_LLM_DEPTH})")
+    if not any(node.gate == "OR" for node in tree.nodes):
+        problems.append("no OR gate")
+    return "; ".join(problems) or None
+
+
 def _generate_with_llm(record: CweRecordSchema, timeout: int = LLM_TIMEOUT_SECONDS) -> FaultTreeSchema:
-    content = call_gemini_json(
-        SYSTEM_PROMPT,
-        _build_user_prompt(record),
-        _GEMINI_RESPONSE_SCHEMA,
-        max_output_tokens=MAX_OUTPUT_TOKENS,
-        timeout=timeout,
-    )
-    try:
-        return FaultTreeSchema.model_validate_json(content)
-    except ValidationError as exc:
-        raise LLMAnalysisError(f"Model fault tree failed structural validation: {exc}") from exc
+    """Ask Gemini for a tree; if it is valid but thin, hand it back its own tree to expand.
+
+    Gemini tends to undershoot any node count it is given, so the retry shows
+    it the concrete tree to extend instead of just repeating the request.
+    """
+    user_prompt = _build_user_prompt(record)
+    problem = None
+    best: FaultTreeSchema | None = None  # largest tree that clears the MIN bar
+    for attempt in range(2):
+        content = call_gemini_json(
+            SYSTEM_PROMPT,
+            user_prompt,
+            _GEMINI_RESPONSE_SCHEMA,
+            max_output_tokens=MAX_OUTPUT_TOKENS,
+            timeout=timeout,
+        )
+        try:
+            tree = FaultTreeSchema.model_validate_json(content)
+        except ValidationError as exc:
+            raise LLMAnalysisError(f"Model fault tree failed structural validation: {exc}") from exc
+        if _shortfall(tree) is None and (best is None or len(tree.nodes) > len(best.nodes)):
+            best = tree
+        problem = _shortfall(tree, TARGET_LLM_NODES, TARGET_LLM_LEAVES)
+        if problem is None:
+            return tree
+        logger.info("Gemini fault tree for %s too thin on attempt %d: %s", record.cwe_id, attempt + 1, problem)
+        user_prompt = (
+            _build_user_prompt(record)
+            + f"\n\nYour previous attempt was too thin: {problem}. Here it is:\n"
+            + f"<previous_tree>\n{tree.model_dump_json(exclude_none=True)}\n</previous_tree>\n"
+            + "Return the COMPLETE expanded tree (not a diff). Keep what is good, then decompose "
+            "every basic event that has a plausible deeper cause into its own gate with 2 to 3 "
+            "children, and add basic events for any listed consequence or mitigation not yet "
+            "covered. Follow the FULL-tree rules exactly."
+        )
+    if best is not None:
+        return best
+    raise LLMAnalysisError(f"Model fault tree too thin after a retry: {problem}")
 
 
 def _to_response(row: CweFaultTree, upgrading: bool = False) -> FaultTreeResponseSchema:
