@@ -61,12 +61,19 @@ function paramsForSearch() {
   return params;
 }
 
+// This app only auto-syncs recently *modified* CVEs (NVD caps a date-range
+// query at 120 days) - an older or untouched one, e.g. Log4Shell, simply
+// isn't stored yet. Searching its exact ID offers a one-click fetch instead
+// of a dead end; see GET /cves/{cve_id}/lookup on the backend.
+const CVE_ID_PATTERN = /^CVE-\d{4}-\d{4,}$/i;
+
 async function loadCves() {
   setStatus("Loading local CVEs…");
+  const query = $("search-input").value.trim();
   try {
     const page = await api(`/cves?${paramsForSearch()}`);
     state.total = page.total;
-    renderCves(page.items);
+    renderCves(page.items, query);
     $("result-count").textContent = `${page.total} result${page.total === 1 ? "" : "s"}`;
     $("previous-button").disabled = state.offset === 0;
     $("next-button").disabled = state.offset + state.limit >= page.total;
@@ -76,14 +83,49 @@ async function loadCves() {
   }
 }
 
-function renderCves(items) {
+function renderLookupFallback(cveId) {
+  const wrap = document.createElement("div");
+  wrap.className = "empty-list lookup-fallback";
+  const text = document.createElement("p");
+  text.textContent = `${cveId} isn't in your local database yet. This app only auto-syncs recently modified CVEs, so an older or untouched one has to be fetched on demand.`;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "button button-primary";
+  button.textContent = `Fetch ${cveId} from NVD`;
+  button.addEventListener("click", () => fetchCveFromNvd(cveId, button));
+  wrap.append(text, button);
+  return wrap;
+}
+
+async function fetchCveFromNvd(cveId, button) {
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = "Fetching…";
+  setStatus(`Fetching ${cveId} from NVD…`);
+  try {
+    await api(`/cves/${encodeURIComponent(cveId)}/lookup`);
+    setStatus(`${cveId} fetched from NVD.`);
+    await loadCves(); // now stored locally, so this re-render finds it normally
+    loadIntelligence(cveId); // open it straight away, same as clicking its card would
+  } catch (error) {
+    setStatus(error.message, true);
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+
+function renderCves(items, query = "") {
   const list = $("cve-list");
   list.replaceChildren();
   if (!items.length) {
-    const empty = document.createElement("p");
-    empty.className = "empty-list";
-    empty.textContent = "No vulnerabilities match this search.";
-    list.append(empty);
+    if (CVE_ID_PATTERN.test(query)) {
+      list.append(renderLookupFallback(query.toUpperCase()));
+    } else {
+      const empty = document.createElement("p");
+      empty.className = "empty-list";
+      empty.textContent = "No vulnerabilities match this search.";
+      list.append(empty);
+    }
     return;
   }
   for (const cve of items) {

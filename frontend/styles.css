@@ -243,6 +243,8 @@ textarea { min-height: 40px; font-family: inherit; resize: vertical; }
 
 .empty-state { color: var(--muted); padding: 42px 6px; text-align: center; }
 .empty-list { color: var(--muted); padding: 26px 5px; }
+.lookup-fallback { display: grid; gap: 12px; justify-items: start; }
+.lookup-fallback p { margin: 0; }
 details { color: var(--muted); font-size: .9rem; }
 summary { cursor: pointer; color: var(--accent); }
 
